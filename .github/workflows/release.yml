@@ -30,19 +30,19 @@ jobs:
           fetch-depth: 0
 
       - name: Configure
-        run: cmake -S tool -B tool/build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_extra }}
+        run: cmake -S tool -B build -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_extra }}
 
       - name: Build
-        run: cmake --build tool/build
+        run: cmake --build build
 
       - name: Package
-        run: cd tool/build && cpack
+        run: cd build && cpack
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: package-${{ matrix.os }}-${{ matrix.arch }}
-          path: tool/build/gv2fsm-*
+          path: build/gv2fsm-*
 
   release:
     needs: build-package

@@ -15,10 +15,10 @@ jobs:
           fetch-depth: 0
 
       - name: Configure
-        run: cmake -S tool -B tool/build -DCMAKE_BUILD_TYPE=Release -DGV2FSM_ENABLE_TESTS=ON
+        run: cmake -S tool -B build -DCMAKE_BUILD_TYPE=Release -DGV2FSM_ENABLE_TESTS=ON
 
       - name: Build
-        run: cmake --build tool/build
+        run: cmake --build build
 
       - name: Test
-        run: ctest --test-dir tool/build --output-on-failure
+        run: ctest --test-dir build --output-on-failure
