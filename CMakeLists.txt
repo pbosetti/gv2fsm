@@ -75,6 +75,35 @@ configure_file(
 
 install(TARGETS gv2fsm DESTINATION bin)
 
+# ---- Testing ----
+option(GV2FSM_ENABLE_TESTS "Build the test suite" OFF)
+
+if(GV2FSM_ENABLE_TESTS)
+FetchContent_Declare(
+  Catch2
+  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+  GIT_TAG        v3.5.2
+)
+FetchContent_MakeAvailable(Catch2)
+
+add_executable(gv2fsm_tests
+  test/test_main.cpp
+  src/dot_parser.cpp
+  src/fsm.cpp
+  src/generator.cpp
+)
+target_include_directories(gv2fsm_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}")
+target_link_libraries(gv2fsm_tests PRIVATE Catch2::Catch2WithMain pantor::inja)
+target_compile_definitions(gv2fsm_tests PRIVATE
+  SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+)
+
+include(CTest)
+include(Catch)
+catch_discover_tests(gv2fsm_tests)
+endif()
+
 # ---- Packaging ----
 set(CPACK_PACKAGE_NAME "gv2fsm")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
