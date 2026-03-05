@@ -1,0 +1,2 @@
+#pragma once
+#define GV2FSM_VERSION "@PROJECT_VERSION@"

@@ -1,5 +1,22 @@
 cmake_minimum_required(VERSION 3.16)
-project(gv2fsm_cpp VERSION 0.5.2 LANGUAGES CXX)
+
+# Extract version from git tag matching ^[vV]\d.\d.\d(-...)?
+execute_process(
+  COMMAND git describe --tags --abbrev=0
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  OUTPUT_VARIABLE GIT_TAG
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+  RESULT_VARIABLE GIT_TAG_RESULT
+)
+if(GIT_TAG_RESULT EQUAL 0 AND GIT_TAG MATCHES "^[vV]([0-9]+\\.[0-9]+\\.[0-9]+)")
+  set(GV2FSM_VERSION "${CMAKE_MATCH_1}")
+else()
+  set(GV2FSM_VERSION "0.0.0")
+endif()
+message(STATUS "gv2fsm version: ${GV2FSM_VERSION}")
+
+project(gv2fsm_cpp VERSION ${GV2FSM_VERSION} LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -47,8 +64,14 @@ add_executable(gv2fsm
   src/generator.cpp
 )
 
-target_include_directories(gv2fsm PRIVATE src)
+target_include_directories(gv2fsm PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(gv2fsm PRIVATE cxxopts::cxxopts pantor::inja)
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/version.hpp.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/version.hpp"
+  @ONLY
+)
 
 install(TARGETS gv2fsm DESTINATION bin)
 

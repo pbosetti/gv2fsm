@@ -1,12 +1,11 @@
 #include "fsm.hpp"
 #include "generator.hpp"
+#include "version.hpp"
 #include <cxxopts.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
-
-static const char *VERSION = "0.5.2";
 
 int main(int argc, char *argv[]) {
   FSM sm;
@@ -16,7 +15,7 @@ int main(int argc, char *argv[]) {
   cxxopts::Options options("gv2fsm",
                            "Graphviz to Finite State Machine generator\n"
                            "Version: " +
-                               std::string(VERSION) +
+                               std::string(GV2FSM_VERSION) +
                                "\n"
                                "See also https://github.com/pbosetti/gv2fsm");
 
@@ -37,6 +36,7 @@ int main(int argc, char *argv[]) {
     ("l,log", "Add syslog calls in state and transition functions")
     ("k,sigint", "Install SIGINT handler that points to STATE",
      cxxopts::value<std::string>())
+    ("f,force", "Overwrite existing output files")
     ("h,help", "Prints this help")
     ("dotfile", "Input .dot file", cxxopts::value<std::string>());
   // clang-format on
@@ -90,6 +90,8 @@ int main(int argc, char *argv[]) {
 
   if (result.count("sigint"))
     sm.sigint = result["sigint"].as<std::string>();
+
+  bool force = result.count("force") > 0;
 
   if (sm.ino) {
     sm.plain_c = true;
@@ -190,29 +192,31 @@ int main(int argc, char *argv[]) {
 
   if (gen_header) {
     std::string name;
-    if (sm.plain_c) {
+    if (sm.plain_c)
       name = sm.cname + ".h";
-      std::ofstream f(name);
-      f << generate_header_h(sm);
-    } else {
+    else
       name = sm.cname + ".hpp";
-      std::ofstream f(name);
-      f << generate_header_hpp(sm);
+    if (!force && fs::exists(name)) {
+      std::cerr << "ERROR: " << name << " already exists (use -f to overwrite)\n";
+      return 5;
     }
+    std::ofstream f(name);
+    f << (sm.plain_c ? generate_header_h(sm) : generate_header_hpp(sm));
     std::cout << "Generated header " << name << "\n";
   }
 
   if (gen_source) {
     std::string name;
-    if (sm.ino || !sm.plain_c) {
+    if (sm.ino || !sm.plain_c)
       name = sm.cname + "_impl.hpp";
-      std::ofstream f(name);
-      f << generate_source_cpp(sm);
-    } else {
+    else
       name = sm.cname + ".c";
-      std::ofstream f(name);
-      f << generate_source_c(sm);
+    if (!force && fs::exists(name)) {
+      std::cerr << "ERROR: " << name << " already exists (use -f to overwrite)\n";
+      return 5;
     }
+    std::ofstream f(name);
+    f << ((sm.ino || !sm.plain_c) ? generate_source_cpp(sm) : generate_source_c(sm));
     std::cout << "Generated source " << name << "\n";
   }
 

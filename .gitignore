@@ -4,3 +4,5 @@ examples/*.cpp
 examples/*.c
 examples/*.h
 examples/*.o
+
+.vscode
