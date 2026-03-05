@@ -1,4 +1,4 @@
-# Graphvis to Finite State Machine generator
+# Graphviz to Finite State Machine generator
 
 This is a C++ version of the former Ruby-based tool: <https://github.com/pbosetti/gv_fsm>.
 
@@ -14,7 +14,7 @@ cmake --install build
 
 ## Pre-compiled binaries
 
-Refer to the releases. Available for macOS and for Linux (Ubuntu).
+Refer to the [releases](https://github.com/pbosetti/gv2fsm/releases/latest). Available for macOS (Universal binaries) and for Linux (22.04 and later).
 
 ## Usage
 
