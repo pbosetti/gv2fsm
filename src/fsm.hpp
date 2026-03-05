@@ -4,62 +4,84 @@
 #include <string>
 #include <vector>
 
+/** @brief State node in the FSM graph. */
 struct State {
-  std::string id;
-  std::string function; // e.g. "do_init" or "prefix_do_init"
+  std::string id;       ///< State identifier.
+  std::string function; ///< State function name (e.g. "do_init" or "prefix_do_init").
 };
 
+/** @brief Directed transition between states. */
 struct Transition {
-  std::string from;
-  std::string to;
-  std::string function; // may be empty (NULL)
+  std::string from;     ///< Source state identifier.
+  std::string to;       ///< Destination state identifier.
+  std::string function; ///< Transition function name, may be empty (NULL).
 };
 
+/** @brief Source and sink classification of FSM states. */
 struct Topology {
-  std::vector<std::string> sources; // nodes with no incoming edges
-  std::vector<std::string> sinks;   // nodes with no outgoing edges
+  std::vector<std::string> sources; ///< States with no incoming edges.
+  std::vector<std::string> sinks;   ///< States with no outgoing edges.
 };
 
+/** @brief Transition path endpoint pair. */
 struct TransitionPath {
-  std::string from;
-  std::string to;
+  std::string from; ///< Source state identifier.
+  std::string to;   ///< Destination state identifier.
 };
 
 class FSM {
 public:
-  // Parse a DOT file and populate the FSM
+  /**
+   * @brief Parse a DOT file and populate the FSM model.
+   * @param filename Path to the DOT input file.
+   * @param error_msg Output error message populated on failure.
+   * @return true on success, false on parse/validation failure.
+   */
   bool parse(const std::string &filename, std::string &error_msg);
 
-  // Accessor helpers
+  /** @brief Get the list of state identifiers. */
   std::vector<std::string> states_list() const;
+  /** @brief Get the list of state function names. */
   std::vector<std::string> state_functions_list() const;
+  /** @brief Get the deduplicated list of transition function names. */
   std::vector<std::string> transition_functions_list() const;
 
-  // Map: transitions_map[from_idx][to_idx] = function name or "NULL"
+  /**
+   * @brief Build transition-function matrix indexed by state order.
+   * @return Matrix where entry [from_idx][to_idx] is function name or "NULL".
+   */
   std::vector<std::vector<std::string>> transitions_map() const;
 
-  // Map: state_id -> list of destination state_ids
+  /**
+   * @brief Build state destinations map.
+   * @return Map from state id to list of reachable destination state ids.
+   */
   std::map<std::string, std::vector<std::string>> destinations() const;
 
-  // Map: function_name -> list of {from, to} paths
+  /**
+   * @brief Build reverse map of transition function usage.
+   * @return Map from function name to list of source/destination pairs.
+   */
   std::map<std::string, std::vector<TransitionPath>> transitions_paths() const;
 
-  // Compute topology (sources and sinks based on adjacency matrix)
+  /**
+   * @brief Compute topology classification from transition adjacency.
+   * @return Lists of source and sink states.
+   */
   Topology topology() const;
 
-  // Data
-  std::string project_name;
-  std::string description;
-  std::string cname;     // output base name (without extension)
-  std::string prefix;    // prefix for generated names (includes trailing _)
-  std::string dotfile;
-  std::string sigint;    // SIGINT target state, empty if none
-  bool syslog = false;
-  bool ino = false;
-  bool plain_c = true;
+  std::string project_name; ///< Project name used for generated artifacts.
+  std::string description;  ///< Human-readable FSM description.
+  std::string cname;        ///< Output base name (without extension).
+  std::string prefix;       ///< Prefix for generated names (includes trailing '_').
+  std::string dotfile;      ///< Source DOT file path.
+  std::string sigint;       ///< SIGINT target state, empty when disabled.
+  bool syslog = false;      ///< Enable syslog support in generated code.
+  bool ino = false;         ///< Enable ino support in generated code.
+  bool plain_c = true;      ///< Generate plain C API when true.
 
-  std::vector<State> states;
-  std::vector<Transition> transitions;
+  std::vector<State> states;         ///< Parsed FSM states.
+  std::vector<Transition> transitions; ///< Parsed FSM transitions.
 
 private:
   // Adjacency matrix: _matrix[from][to] = count of edges

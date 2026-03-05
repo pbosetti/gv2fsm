@@ -2,17 +2,37 @@
 #include "fsm.hpp"
 #include <string>
 
-// Generate C header (.h) file content
+/**
+ * @brief Generate C header (.h) file content.
+ * @param fsm Source FSM model.
+ * @return Rendered C header content.
+ */
 std::string generate_header_h(const FSM &fsm);
 
-// Generate C source (.c) file content
+/**
+ * @brief Generate C source (.c) file content.
+ * @param fsm Source FSM model.
+ * @return Rendered C source content.
+ */
 std::string generate_source_c(const FSM &fsm);
 
-// Generate C++ header (.hpp) file content
+/**
+ * @brief Generate C++ header (.hpp) file content.
+ * @param fsm Source FSM model.
+ * @return Rendered C++ header content.
+ */
 std::string generate_header_hpp(const FSM &fsm);
 
-// Generate C++ source (_impl.hpp) file content
+/**
+ * @brief Generate C++ implementation (_impl.hpp) file content.
+ * @param fsm Source FSM model.
+ * @return Rendered C++ implementation content.
+ */
 std::string generate_source_cpp(const FSM &fsm);
 
-// Generate the common file header comment
+/**
+ * @brief Generate the common file header comment shared by outputs.
+ * @param fsm Source FSM model.
+ * @return Rendered file header comment.
+ */
 std::string generate_file_header(const FSM &fsm);
