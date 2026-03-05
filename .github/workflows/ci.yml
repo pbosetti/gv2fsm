@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure
+        run: cmake -S tool -B tool/build -DCMAKE_BUILD_TYPE=Release -DGV2FSM_ENABLE_TESTS=ON
+
+      - name: Build
+        run: cmake --build tool/build
+
+      - name: Test
+        run: ctest --test-dir tool/build --output-on-failure
