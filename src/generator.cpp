@@ -61,6 +61,9 @@ static nlohmann::json build_data(const FSM &fsm) {
   data["prefix_upper"] = to_upper(fsm.prefix);
   data["cname"] = fsm.cname;
   data["cname_upper"] = to_upper(fsm.cname);
+  std::string cname_base = basename_no_ext(fsm.cname + ".x");  // strip dir prefix
+  data["cname_base"] = cname_base;
+  data["cname_base_upper"] = to_upper(cname_base);
   data["is_ino"] = fsm.ino;
   data["use_syslog"] = fsm.syslog;
   data["plain_c"] = fsm.plain_c;
@@ -232,8 +235,8 @@ Functions and types have been generated with prefix "{{ prefix }}"
 
 // C Header (.h)
 static const char *HH_TEMPLATE = R"({% if not is_ino %}
-#ifndef {{ cname_upper }}_H
-#define {{ cname_upper }}_H
+#ifndef {{ cname_base_upper }}_H
+#define {{ cname_base_upper }}_H
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -288,13 +291,13 @@ extern transition_func_t *const {{ prefix }}transition_table[{{ prefix_upper }}N
 {% if not is_ino %}#ifdef __cplusplus
 }
 #endif
-#endif // {{ cname_upper }}_H
+#endif // {{ cname_base_upper }}_H
 {% endif %})";
 
 // C Source (.c)
 static const char *CC_TEMPLATE =
     R"({% if not is_ino %}{% if use_syslog %}#include <syslog.h>
-{% endif %}{% endif %}#include "{{ cname }}.h"
+{% endif %}{% endif %}#include "{{ cname_base }}.h"
 {% if has_sigint %}
 // Install signal handler: 
 // SIGINT requests a transition to state {{ sigint }}
@@ -442,8 +445,8 @@ int main() {
 
 // C++ Header (.hpp)
 static const char *HPP_TEMPLATE =
-    R"(#ifndef {{ cname_upper }}_HPP
-#define {{ cname_upper }}_HPP
+    R"(#ifndef {{ cname_base_upper }}_HPP
+#define {{ cname_base_upper }}_HPP
 #include <functional>
 #include <iostream>
 #include <map>
@@ -616,9 +619,9 @@ public:
 
 }; // namespace {{ namespace }}
 
-#include "{{ cname }}_impl.hpp"
+#include "{{ cname_base }}_impl.hpp"
 
-#endif // {{ cname_upper }}_HPP
+#endif // {{ cname_base_upper }}_HPP
 )";
 
 // C++ Source (_impl.hpp)
