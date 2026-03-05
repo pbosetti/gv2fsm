@@ -1,0 +1,6 @@
+/*build*
+examples/*.hpp
+examples/*.cpp
+examples/*.c
+examples/*.h
+examples/*.o
