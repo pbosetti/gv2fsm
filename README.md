@@ -1,5 +1,7 @@
 # Graphvis to Finite State Machine generator
 
+This is a C++ version of the former Ruby-based tool: <https://github.com/pbosetti/gv_fsm>.
+
 ## Build
 
 CMake toolset:
