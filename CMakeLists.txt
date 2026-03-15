@@ -57,15 +57,31 @@ FetchContent_MakeAvailable(json)
 
 FetchContent_MakeAvailable(cxxopts inja)
 
-add_executable(gv2fsm
-  src/main.cpp
+set(GV2FSM_LIBRARY_SOURCES
+  src/gv2fsm.cpp
   src/dot_parser.cpp
   src/fsm.cpp
   src/generator.cpp
 )
 
-target_include_directories(gv2fsm PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(gv2fsm PRIVATE cxxopts::cxxopts pantor::inja)
+add_library(gv2fsm_static STATIC ${GV2FSM_LIBRARY_SOURCES})
+add_library(gv2fsm_shared SHARED ${GV2FSM_LIBRARY_SOURCES})
+
+set_target_properties(gv2fsm_static PROPERTIES OUTPUT_NAME gv2fsm)
+set_target_properties(gv2fsm_shared PROPERTIES OUTPUT_NAME gv2fsm)
+
+foreach(target gv2fsm_static gv2fsm_shared)
+  target_include_directories(${target}
+    PUBLIC
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+      $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+      $<INSTALL_INTERFACE:include/gv2fsm>
+  )
+  target_link_libraries(${target} PUBLIC cxxopts::cxxopts pantor::inja)
+endforeach()
+
+add_executable(gv2fsm src/main.cpp)
+target_link_libraries(gv2fsm PRIVATE gv2fsm_static)
 
 configure_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/src/version.hpp.in"
@@ -73,7 +89,19 @@ configure_file(
   @ONLY
 )
 
-install(TARGETS gv2fsm DESTINATION bin)
+install(TARGETS gv2fsm gv2fsm_static gv2fsm_shared
+  RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+)
+install(FILES
+  src/dot_parser.hpp
+  src/fsm.hpp
+  src/generator.hpp
+  src/gv2fsm.hpp
+  "${CMAKE_CURRENT_BINARY_DIR}/version.hpp"
+  DESTINATION include/gv2fsm
+)
 
 # ---- Testing ----
 option(GV2FSM_ENABLE_TESTS "Build the test suite" OFF)
@@ -89,12 +117,8 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(gv2fsm_tests
   test/test_main.cpp
-  src/dot_parser.cpp
-  src/fsm.cpp
-  src/generator.cpp
 )
-target_include_directories(gv2fsm_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}")
-target_link_libraries(gv2fsm_tests PRIVATE Catch2::Catch2WithMain pantor::inja)
+target_link_libraries(gv2fsm_tests PRIVATE Catch2::Catch2WithMain gv2fsm_static)
 target_compile_definitions(gv2fsm_tests PRIVATE
   SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"

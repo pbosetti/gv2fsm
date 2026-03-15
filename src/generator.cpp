@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <chrono>
 #include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <inja/inja.hpp>
 #include <sstream>
+
+static std::string g_main_template_override;
 
 static std::string current_time_string() {
   auto now = std::chrono::system_clock::now();
@@ -233,6 +236,42 @@ Functions and types have been generated with prefix "{{ prefix }}"
 ******************************************************************************/
 )";
 
+static const char *C_TEST_MAIN_TEMPLATE = R"(#include <unistd.h>
+int main() {
+  {{ prefix }}state_t cur_state = {{ prefix_upper }}STATE_{{ first_state_id_upper }};
+{% if use_syslog %}
+  openlog("SM", LOG_PID | LOG_PERROR, LOG_USER);
+  syslog(LOG_INFO, "Starting SM");
+{% endif %}  do {
+    cur_state = {{ prefix }}run_state(cur_state, NULL);
+    sleep(1);
+{% if num_sinks == 1 %}  } while (cur_state != {{ prefix_upper }}STATE_{{ first_sink_upper }});
+  {{ prefix }}run_state(cur_state, NULL);
+{% else %}  } while (1);
+{% endif %}  return 0;
+}
+)";
+
+static const char *CPP_TEST_MAIN_TEMPLATE = R"(#include <unistd.h>
+#include <thread>
+
+struct Data {
+  int count;
+};
+
+int main() {
+  Data data = {1};
+  auto fsm = {{ namespace }}::FiniteStateMachine(&data);
+  fsm.set_timing_function([]() {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  });
+  fsm.run([&](Data &s) {
+    std::cout << "State: " << fsm.state() << " data: " << s.count << std::endl;
+  });
+  return 0;
+}
+)";
+
 // C Header (.h)
 static const char *HH_TEMPLATE = R"({% if not is_ino %}
 #ifndef {{ cname_base_upper }}_H
@@ -426,20 +465,7 @@ void loop() {
 */
 {% else %}
 #ifdef TEST_MAIN
-#include <unistd.h>
-int main() {
-  {{ prefix }}state_t cur_state = {{ prefix_upper }}STATE_{{ first_state_id_upper }};
-{% if use_syslog %}
-  openlog("SM", LOG_PID | LOG_PERROR, LOG_USER);
-  syslog(LOG_INFO, "Starting SM");
-{% endif %}  do {
-    cur_state = {{ prefix }}run_state(cur_state, NULL);
-    sleep(1);
-{% if num_sinks == 1 %}  } while (cur_state != {{ prefix_upper }}STATE_{{ first_sink_upper }});
-  {{ prefix }}run_state(cur_state, NULL);
-{% else %}  } while (1);
-{% endif %}  return 0;
-}
+{{ test_main }}
 #endif
 {% endif %})";
 
@@ -686,26 +712,40 @@ void {{ ti.name }}(T &data) {
 
 // Example usage:
 #ifdef TEST_MAIN
-#include <unistd.h>
-#include <thread>
-
-struct Data {
-  int count;
-};
-
-int main() {
-  Data data = {1};
-  auto fsm = {{ namespace }}::FiniteStateMachine(&data);
-  fsm.set_timing_function([]() {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-  });
-  fsm.run([&](Data &s) {
-    std::cout << "State: " << fsm.state() << " data: " << s.count << std::endl;
-  });
-  return 0;
-}
+{{ test_main }}
 #endif // TEST_MAIN
 )";
+
+static std::string render_main_template(const nlohmann::json &data,
+                                        const std::string &default_template) {
+  inja::Environment env;
+  return env.render(g_main_template_override.empty() ? default_template
+                                                     : g_main_template_override,
+                    data);
+}
+
+bool set_main_template(const std::string &path, std::string *error_msg) {
+  if (path.empty()) {
+    g_main_template_override.clear();
+    if (error_msg)
+      error_msg->clear();
+    return true;
+  }
+
+  std::ifstream input(path);
+  if (!input) {
+    if (error_msg)
+      *error_msg = "Cannot open main template file: " + path;
+    return false;
+  }
+
+  std::ostringstream buffer;
+  buffer << input.rdbuf();
+  g_main_template_override = buffer.str();
+  if (error_msg)
+    error_msg->clear();
+  return true;
+}
 
 std::string generate_file_header(const FSM &fsm) {
   auto data = build_data(fsm);
@@ -722,6 +762,7 @@ std::string generate_header_h(const FSM &fsm) {
 std::string generate_source_c(const FSM &fsm) {
   auto data = build_data(fsm);
   inja::Environment env;
+  data["test_main"] = render_main_template(data, C_TEST_MAIN_TEMPLATE);
   return env.render(HEADER_TEMPLATE, data) + env.render(CC_TEMPLATE, data);
 }
 
@@ -734,5 +775,6 @@ std::string generate_header_hpp(const FSM &fsm) {
 std::string generate_source_cpp(const FSM &fsm) {
   auto data = build_data(fsm);
   inja::Environment env;
+  data["test_main"] = render_main_template(data, CPP_TEST_MAIN_TEMPLATE);
   return env.render(HEADER_TEMPLATE, data) + env.render(CPP_TEMPLATE, data);
 }

@@ -12,6 +12,9 @@ cmake --build build
 cmake --install build
 ```
 
+This builds the `gv2fsm` executable together with static and shared libraries
+(`libgv2fsm.a` and `libgv2fsm.so`/platform equivalent).
+
 ## Pre-compiled binaries
 
 Refer to the [releases](https://github.com/pbosetti/gv2fsm/releases/latest). Available for macOS (Universal binaries) and for Linux (22.04 and later).
@@ -35,6 +38,17 @@ gv2fsm scheme.dot
 This generates a header file (by default with the name `scheme.h`, use the `-s` switch for changing it) and the source file (`scheme.c`). Typically, **you have then to provide the implementation of state and transition functions by only editing the `scheme.c` file**.
 
 The main interface to the FSM in C is the `run_state` function. See at the end of the generated source file for example usage.
+
+## Library usage
+
+The project also ships a library API. Include `gv2fsm.hpp` and call
+`gv2fsm::run(argc, argv)` to execute the same workflow provided by the command
+line executable from your own application.
+
+The generator API also exposes `set_main_template(path)`, which loads an inja
+template from a text file and uses it in place of the built-in example
+`main()` block in generated source templates. Pass an empty path to restore the
+default example.
 
 ## Arduino support
 
