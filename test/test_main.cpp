@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -9,6 +10,7 @@
 #include "dot_parser.hpp"
 #include "fsm.hpp"
 #include "generator.hpp"
+#include "gv2fsm.hpp"
 #include "version.hpp"
 
 namespace fs = std::filesystem;
@@ -38,6 +40,17 @@ static bool parse_sm(FSM &fsm, const std::string &dotpath = DOT_FILE.string()) {
 static fs::path write_tmp_dot(const std::string &content,
                               const std::string &name = "tmp_test.dot") {
   fs::path p = fs::temp_directory_path() / name;
+  std::ofstream f(p);
+  f << content;
+  return p;
+}
+
+static fs::path write_tmp_text(const std::string &content,
+                               const std::string &stem,
+                               const std::string &ext = ".txt") {
+  auto timestamp = std::to_string(
+      std::chrono::steady_clock::now().time_since_epoch().count());
+  fs::path p = fs::temp_directory_path() / (stem + "_" + timestamp + ext);
   std::ofstream f(p);
   f << content;
   return p;
@@ -337,6 +350,26 @@ TEST_CASE("generate_source_cpp produces valid C++ impl", "[generator]") {
   CHECK_THAT(cpp, ContainsSubstring("UNIMPLEMENTED"));
 }
 
+TEST_CASE("set_main_template overrides generated example main", "[generator]") {
+  FSM fsm;
+  fsm.plain_c = false;
+  fsm.project_name = "sm";
+  REQUIRE(parse_sm(fsm));
+
+  fs::path main_template = write_tmp_text(
+      "int main() {\n  return {{ num_states }};\n}\n", "gv2fsm_main_template",
+      ".inja");
+
+  std::string error;
+  REQUIRE(set_main_template(main_template.string(), &error));
+  auto cpp = generate_source_cpp(fsm);
+  CHECK_THAT(cpp, ContainsSubstring("int main() {\n  return 5;\n}"));
+  CHECK(cpp.find("std::this_thread::sleep_for") == std::string::npos);
+
+  REQUIRE(set_main_template("", &error));
+  fs::remove(main_template);
+}
+
 TEST_CASE("generate_header_hpp with prefix", "[generator]") {
   FSM fsm;
   fsm.plain_c = false;
@@ -425,6 +458,22 @@ static int run_cmd(const std::string &cmd) {
 #endif
 }
 
+static int run_lib(std::vector<std::string> args, std::string &out,
+                   std::string &err) {
+  std::vector<char *> argv;
+  argv.reserve(args.size());
+  for (auto &arg : args)
+    argv.push_back(arg.data());
+
+  std::ostringstream out_stream;
+  std::ostringstream err_stream;
+  int rc = gv2fsm::run(static_cast<int>(argv.size()), argv.data(), out_stream,
+                       err_stream);
+  out = out_stream.str();
+  err = err_stream.str();
+  return rc;
+}
+
 TEST_CASE("Smoke: gv2fsm generates C++ files", "[smoke]") {
   fs::path out_dir = fs::temp_directory_path() / "gv2fsm_smoke_gen";
   fs::create_directories(out_dir);
@@ -452,6 +501,38 @@ TEST_CASE("Smoke: gv2fsm generates C++ files", "[smoke]") {
   CHECK_THAT(hpp, ContainsSubstring("namespace sm"));
   CHECK_THAT(hpp, ContainsSubstring("#include \"sm_impl.hpp\""));
 
+  fs::remove_all(out_dir);
+}
+
+TEST_CASE("Smoke: library API generates files with custom main template",
+          "[smoke][library]") {
+  fs::path out_dir = fs::temp_directory_path() / "gv2fsm_library_gen";
+  fs::create_directories(out_dir);
+
+  fs::path out_base = out_dir / "sm";
+  fs::path main_template = write_tmp_text(
+      "int main() {\n  return {{ num_states }};\n}\n", "main_template",
+      ".inja");
+
+  std::string error;
+  REQUIRE(set_main_template(main_template.string(), &error));
+
+  std::string out;
+  std::string err;
+  int rc = run_lib({"gv2fsm", "-p", "sm", "-o", out_base.string(), "--cpp", "-f",
+                    DOT_FILE.string()},
+                   out, err);
+  CHECK(rc == 0);
+  CHECK(err.empty());
+  CHECK_THAT(out, ContainsSubstring("Generated source"));
+  CHECK(fs::exists(out_base.string() + ".hpp"));
+  CHECK(fs::exists(out_base.string() + "_impl.hpp"));
+
+  auto impl = read_all(out_base.string() + "_impl.hpp");
+  CHECK_THAT(impl, ContainsSubstring("int main() {\n  return 5;\n}"));
+
+  REQUIRE(set_main_template("", &error));
+  fs::remove(main_template);
   fs::remove_all(out_dir);
 }
 

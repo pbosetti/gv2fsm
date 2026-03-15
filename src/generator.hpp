@@ -3,6 +3,17 @@
 #include <string>
 
 /**
+ * @brief Override the example TEST_MAIN template used in generated sources.
+ * @param path Path to a text file containing an inja template snippet.
+ *             Pass an empty path to restore the built-in example main().
+ *             The override is process-wide and applies to subsequent
+ *             generate_source_* calls until reset.
+ * @param error_msg Output error message populated on failure.
+ * @return true when the template was loaded or reset successfully.
+ */
+bool set_main_template(const std::string &path, std::string *error_msg = nullptr);
+
+/**
  * @brief Generate C header (.h) file content.
  * @param fsm Source FSM model.
  * @return Rendered C header content.
