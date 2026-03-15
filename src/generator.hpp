@@ -6,6 +6,8 @@
  * @brief Override the example TEST_MAIN template used in generated sources.
  * @param path Path to a text file containing an inja template snippet.
  *             Pass an empty path to restore the built-in example main().
+ *             The override is process-wide and applies to subsequent
+ *             generate_source_* calls until reset.
  * @param error_msg Output error message populated on failure.
  * @return true when the template was loaded or reset successfully.
  */

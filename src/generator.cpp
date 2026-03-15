@@ -6,9 +6,11 @@
 #include <fstream>
 #include <iomanip>
 #include <inja/inja.hpp>
+#include <mutex>
 #include <sstream>
 
 static std::string g_main_template_override;
+static std::mutex g_main_template_mutex;
 
 static std::string current_time_string() {
   auto now = std::chrono::system_clock::now();
@@ -236,7 +238,7 @@ Functions and types have been generated with prefix "{{ prefix }}"
 ******************************************************************************/
 )";
 
-static const char *C_TEST_MAIN_TEMPLATE = R"(#include <unistd.h>
+static const char *C_EXAMPLE_MAIN_TEMPLATE = R"(#include <unistd.h>
 int main() {
   {{ prefix }}state_t cur_state = {{ prefix_upper }}STATE_{{ first_state_id_upper }};
 {% if use_syslog %}
@@ -252,7 +254,7 @@ int main() {
 }
 )";
 
-static const char *CPP_TEST_MAIN_TEMPLATE = R"(#include <unistd.h>
+static const char *CPP_EXAMPLE_MAIN_TEMPLATE = R"(#include <unistd.h>
 #include <thread>
 
 struct Data {
@@ -718,13 +720,19 @@ void {{ ti.name }}(T &data) {
 
 static std::string render_main_template(const nlohmann::json &data,
                                         const std::string &default_template) {
+  std::string main_template_override;
+  {
+    std::lock_guard<std::mutex> lock(g_main_template_mutex);
+    main_template_override = g_main_template_override;
+  }
   inja::Environment env;
-  return env.render(g_main_template_override.empty() ? default_template
-                                                     : g_main_template_override,
+  return env.render(main_template_override.empty() ? default_template
+                                                   : main_template_override,
                     data);
 }
 
 bool set_main_template(const std::string &path, std::string *error_msg) {
+  std::lock_guard<std::mutex> lock(g_main_template_mutex);
   if (path.empty()) {
     g_main_template_override.clear();
     if (error_msg)
@@ -762,7 +770,7 @@ std::string generate_header_h(const FSM &fsm) {
 std::string generate_source_c(const FSM &fsm) {
   auto data = build_data(fsm);
   inja::Environment env;
-  data["test_main"] = render_main_template(data, C_TEST_MAIN_TEMPLATE);
+  data["test_main"] = render_main_template(data, C_EXAMPLE_MAIN_TEMPLATE);
   return env.render(HEADER_TEMPLATE, data) + env.render(CC_TEMPLATE, data);
 }
 
@@ -775,6 +783,6 @@ std::string generate_header_hpp(const FSM &fsm) {
 std::string generate_source_cpp(const FSM &fsm) {
   auto data = build_data(fsm);
   inja::Environment env;
-  data["test_main"] = render_main_template(data, CPP_TEST_MAIN_TEMPLATE);
+  data["test_main"] = render_main_template(data, CPP_EXAMPLE_MAIN_TEMPLATE);
   return env.render(HEADER_TEMPLATE, data) + env.render(CPP_TEMPLATE, data);
 }

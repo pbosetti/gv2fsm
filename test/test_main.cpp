@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -39,6 +40,17 @@ static bool parse_sm(FSM &fsm, const std::string &dotpath = DOT_FILE.string()) {
 static fs::path write_tmp_dot(const std::string &content,
                               const std::string &name = "tmp_test.dot") {
   fs::path p = fs::temp_directory_path() / name;
+  std::ofstream f(p);
+  f << content;
+  return p;
+}
+
+static fs::path write_tmp_text(const std::string &content,
+                               const std::string &stem,
+                               const std::string &ext = ".txt") {
+  auto timestamp = std::to_string(
+      std::chrono::steady_clock::now().time_since_epoch().count());
+  fs::path p = fs::temp_directory_path() / (stem + "_" + timestamp + ext);
   std::ofstream f(p);
   f << content;
   return p;
@@ -344,11 +356,9 @@ TEST_CASE("set_main_template overrides generated example main", "[generator]") {
   fsm.project_name = "sm";
   REQUIRE(parse_sm(fsm));
 
-  fs::path main_template = fs::temp_directory_path() / "gv2fsm_main_template.inja";
-  {
-    std::ofstream f(main_template);
-    f << "int main() {\n  return {{ num_states }};\n}\n";
-  }
+  fs::path main_template = write_tmp_text(
+      "int main() {\n  return {{ num_states }};\n}\n", "gv2fsm_main_template",
+      ".inja");
 
   std::string error;
   REQUIRE(set_main_template(main_template.string(), &error));
@@ -500,11 +510,9 @@ TEST_CASE("Smoke: library API generates files with custom main template",
   fs::create_directories(out_dir);
 
   fs::path out_base = out_dir / "sm";
-  fs::path main_template = out_dir / "main_template.inja";
-  {
-    std::ofstream f(main_template);
-    f << "int main() {\n  return {{ num_states }};\n}\n";
-  }
+  fs::path main_template = write_tmp_text(
+      "int main() {\n  return {{ num_states }};\n}\n", "main_template",
+      ".inja");
 
   std::string error;
   REQUIRE(set_main_template(main_template.string(), &error));
@@ -524,6 +532,7 @@ TEST_CASE("Smoke: library API generates files with custom main template",
   CHECK_THAT(impl, ContainsSubstring("int main() {\n  return 5;\n}"));
 
   REQUIRE(set_main_template("", &error));
+  fs::remove(main_template);
   fs::remove_all(out_dir);
 }
 
