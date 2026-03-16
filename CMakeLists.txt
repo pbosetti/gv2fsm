@@ -47,13 +47,6 @@ set(INJA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
 
-# nlohmann_json (inja needs it)
-FetchContent_Declare(json
-  URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz
-  DOWNLOAD_EXTRACT_TIMESTAMP ON
-)
-FetchContent_MakeAvailable(json)
-
 FetchContent_MakeAvailable(cxxopts inja)
 
 set(GV2FSM_LIBRARY_SOURCES
