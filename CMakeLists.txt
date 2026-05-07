@@ -9,12 +9,15 @@ execute_process(
   ERROR_QUIET
   RESULT_VARIABLE GIT_TAG_RESULT
 )
-if(GIT_TAG_RESULT EQUAL 0 AND GIT_TAG MATCHES "^[vV]([0-9]+\\.[0-9]+\\.[0-9]+)")
+if(GV2FSM_VERSION)
+  message(STATUS "gv2fsm version: ${GV2FSM_VERSION} (overridden by GV2FSM_VERSION environment variable)")
+elseif(GIT_TAG_RESULT EQUAL 0 AND GIT_TAG MATCHES "^[vV]([0-9]+\\.[0-9]+\\.[0-9]+)")
   set(GV2FSM_VERSION "${CMAKE_MATCH_1}")
+  message(STATUS "gv2fsm version (from git tag): ${GV2FSM_VERSION}")
 else()
   set(GV2FSM_VERSION "0.0.0")
+  message(STATUS "gv2fsm version undefined and set to: ${GV2FSM_VERSION}")
 endif()
-message(STATUS "gv2fsm version: ${GV2FSM_VERSION}")
 
 project(gv2fsm_cpp VERSION ${GV2FSM_VERSION} LANGUAGES CXX)
 
