@@ -168,7 +168,7 @@ int run(int argc, char *argv[], std::ostream &out, std::ostream &err) {
   }
   out << ".\n";
 
-  out << "                   for transition: ";
+  out << "                       for transition: ";
   if (tfl.empty())
     out << "(none)";
   else

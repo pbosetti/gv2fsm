@@ -626,8 +626,8 @@ public:
 {% for d in s.dest_states %}      case {{ namespace }}::{{ d }}:
 {% endfor %}        break;
       default:
-{% if use_syslog %}        syslog(LOG_WARNING, "[FSM] Cannot pass from {{ s.id }} to %s, remaining in this state", state_names[next_state]);
-{% endif %}        next_state = {{ namespace }}::{{ prefix_upper }}NO_CHANGE;
+{% if use_syslog %}        syslog(LOG_WARNING, "[FSM] Cannot pass from {{ s.id }} to %s, throwing an exception", state_names[next_state]);
+{% endif %}        throw std::runtime_error("Invalid state transition from {{ s.id_upper }} to "s + state_names[next_state]);
       }
 {% if s.sigint_override %}      // SIGINT transition override
       if ({{ sigint }}_requested) next_state = {{ sigint_state_upper }};
