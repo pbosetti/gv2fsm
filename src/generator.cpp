@@ -110,6 +110,13 @@ static nlohmann::json build_data(const FSM &fsm) {
   data["has_transitions"] = !tfl.empty();
   data["num_transition_functions"] = tfl.size();
 
+  // Number of transitions (edges) that have an associated function
+  size_t num_transitions_with_function = 0;
+  for (auto &t : fsm.transitions)
+    if (!t.function.empty())
+      num_transitions_with_function++;
+  data["num_transitions_with_function"] = num_transitions_with_function;
+
   // Transitions map: [from_idx][to_idx] = function or "NULL"
   auto tm = fsm.transitions_map();
   data["transitions_map"] = tm;
@@ -142,11 +149,6 @@ static nlohmann::json build_data(const FSM &fsm) {
     int cnt = ti["paths"].size();
     ti["count"] = cnt;
     ti["plural"] = (cnt != 1);
-    // First path for transition add_transition calls
-    if (cnt > 0) {
-      ti["first_from_upper"] = ti["paths"][0]["from_upper"];
-      ti["first_to_upper"] = ti["paths"][0]["to_upper"];
-    }
     transition_info.push_back(ti);
   }
   data["transition_info"] = transition_info;
@@ -231,7 +233,8 @@ Generation date: {{ generation_date }}
 Generated from: {{ dotfile }}
 The finite state machine has:
   {{ num_states }} states
-  {{ num_transition_functions }} transition functions
+  {{ num_transition_functions }} distinct transition functions
+  {{ num_transitions_with_function }} transitions with an associated function
 {% if has_prefix %}
 Functions and types have been generated with prefix "{{ prefix }}"
 {% endif %}
@@ -636,12 +639,12 @@ public:
 
 {% endfor %}
 {% if has_transitions %}    // Transition functions
-{% for ti in transition_info %}    add_transition({{ prefix_upper }}STATE_{{ ti.first_from_upper }}, {{ prefix_upper }}STATE_{{ ti.first_to_upper }}, [](DATA_T &data) {
+{% for ti in transition_info %}{% for e in ti.paths %}    add_transition({{ prefix_upper }}STATE_{{ e.from_upper }}, {{ prefix_upper }}STATE_{{ e.to_upper }}, [](DATA_T &data) {
 {% if use_syslog %}      syslog(LOG_INFO, "[FSM] State transition {{ ti.name }}");
 {% endif %}      {{ ti.name }}(data);
     });
 
-{% endfor %}{% endif %}  }
+{% endfor %}{% endfor %}{% endif %}  }
 
 }; // class FiniteStateMachine
 
