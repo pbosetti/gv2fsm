@@ -295,7 +295,8 @@ TEST_CASE("generate_file_header contains metadata", "[generator]") {
   CHECK_THAT(hdr, ContainsSubstring("Test description"));
   CHECK_THAT(hdr, ContainsSubstring(GV2FSM_VERSION));
   CHECK_THAT(hdr, ContainsSubstring("5 states"));
-  CHECK_THAT(hdr, ContainsSubstring("5 transition functions"));
+  CHECK_THAT(hdr, ContainsSubstring("5 distinct transition functions"));
+  CHECK_THAT(hdr, ContainsSubstring("6 transitions with an associated function"));
 }
 
 TEST_CASE("generate_header_h produces valid C header", "[generator]") {
