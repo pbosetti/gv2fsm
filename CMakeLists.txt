@@ -49,6 +49,7 @@ FetchContent_Declare(
 
 set(INJA_USE_EMBEDDED_JSON ON CACHE BOOL "" FORCE)
 set(INJA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(INJA_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
 
@@ -211,6 +212,9 @@ set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CM
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   set(CPACK_GENERATOR "DEB")
+  # Install under /usr/local (the DEB generator defaults to /usr) so the binary
+  # lands in /usr/local/bin, which precedes /usr/bin on the default PATH.
+  set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/local")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "${CPACK_PACKAGE_CONTACT}")
   set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "")
