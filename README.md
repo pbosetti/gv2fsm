@@ -1,3 +1,7 @@
+[![Build and Test](https://github.com/pbosetti/gv2fsm/actions/workflows/ci.yml/badge.svg)](https://github.com/pbosetti/gv2fsm/actions/workflows/ci.yml)
+[![Release](https://github.com/pbosetti/gv2fsm/actions/workflows/release.yml/badge.svg)](https://github.com/pbosetti/gv2fsm/actions/workflows/release.yml)
+
+
 # Graphviz to Finite State Machine generator
 
 This is a C++ version of the former Ruby-based tool: <https://github.com/pbosetti/gv_fsm>.
