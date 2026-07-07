@@ -342,6 +342,8 @@ extern transition_func_t *const {{ prefix }}transition_table[{{ prefix_upper }}N
 static const char *CC_TEMPLATE =
     R"({% if not is_ino %}{% if use_syslog %}#include <syslog.h>
 {% endif %}{% endif %}#include "{{ cname_base }}.h"
+/* USER CODE BEGIN includes */
+/* USER CODE END includes */
 {% if has_sigint %}
 // Install signal handler: 
 // SIGINT requests a transition to state {{ sigint }}
@@ -372,29 +374,33 @@ transition_func_t *const {{ prefix }}transition_table[{{ prefix_upper }}NUM_STAT
 {% endfor %}};
 {% else %}// No transition functions
 {% endif %}
-/*  ____  _        _       
- * / ___|| |_ __ _| |_ ___ 
+/* USER CODE BEGIN globals */
+/* USER CODE END globals */
+/*  ____  _        _
+ * / ___|| |_ __ _| |_ ___
  * \___ \| __/ _` | __/ _ \
  *  ___) | || (_| | ||  __/
  * |____/ \__\__,_|\__\___|
- *                         
- *   __                  _   _                 
- *  / _|_   _ _ __   ___| |_(_) ___  _ __  ___ 
+ *
+ *   __                  _   _
+ *  / _|_   _ _ __   ___| |_(_) ___  _ __  ___
  * | |_| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
  * |  _| |_| | | | | (__| |_| | (_) | | | \__ \
  * |_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
- */                                             
+ */
 {% for s in state_dest_info %}
 // Function to be executed in state {{ s.id }}
 // valid return states: {{ join(s.dest_states, ", ") }}
 {% if s.sigint_override %}// SIGINT triggers an emergency transition to {{ sigint }}
 {% endif %}{{ prefix }}state_t {{ s.function }}({{ prefix }}state_data_t *data) {
   {{ prefix }}state_t next_state = {{ s.default_dest }};
-{% if has_sigint and s.is_source %}  signal(SIGINT, signal_handler); 
+{% if has_sigint and s.is_source %}  signal(SIGINT, signal_handler);
   {% endif %}{% if use_syslog and not is_ino %}  syslog(LOG_INFO, "[FSM] In state {{ s.id }}");
 {% endif %}{% if use_syslog and is_ino %}  Serial.println("[FSM] In state {{ s.id }}");
-{% endif %}  /* Your Code Here */
-  
+{% endif %}  /* USER CODE BEGIN {{ s.function }} */
+  /* Your Code Here */
+
+  /* USER CODE END {{ s.function }} */
   switch (next_state) {
 {% for d in s.dest_states %}  case {{ d }}:
 {% endfor %}    break;
@@ -431,22 +437,24 @@ transition_func_t *const {{ prefix }}transition_table[{{ prefix_upper }}NUM_STAT
 {% endfor %}void {{ ti.name }}({{ prefix }}state_data_t *data) {
 {% if use_syslog and not is_ino %}  syslog(LOG_INFO, "[FSM] State transition {{ ti.name }}");
 {% endif %}{% if use_syslog and is_ino %}  Serial.println("[FSM] State transition {{ ti.name }}");
-{% endif %}  /* Your Code Here */
+{% endif %}  /* USER CODE BEGIN {{ ti.name }} */
+  /* Your Code Here */
+  /* USER CODE END {{ ti.name }} */
 }
 
 {% endfor %}{% endif %}
-/*  ____  _        _        
- * / ___|| |_ __ _| |_ ___  
+/*  ____  _        _
+ * / ___|| |_ __ _| |_ ___
  * \___ \| __/ _` | __/ _ \
- *  ___) | || (_| | ||  __/ 
- * |____/ \__\__,_|\__\___| 
- *                          
- *                                              
- *  _ __ ___   __ _ _ __   __ _  __ _  ___ _ __ 
+ *  ___) | || (_| | ||  __/
+ * |____/ \__\__,_|\__\___|
+ *
+ *
+ *  _ __ ___   __ _ _ __   __ _  __ _  ___ _ __
  * | '_ ` _ \ / _` | '_ \ / _` |/ _` |/ _ \ '__|
- * | | | | | | (_| | | | | (_| | (_| |  __/ |   
- * |_| |_| |_|\__,_|_| |_|\__,_|\__, |\___|_|   
- *                              |___/           
+ * | | | | | | (_| | | | | (_| | (_| |  __/ |
+ * |_| |_| |_|\__,_|_| |_|\__,_|\__, |\___|_|
+ *                              |___/
  */
 
 {{ prefix }}state_t {{ prefix }}run_state({{ prefix }}state_t cur_state, {{ prefix }}state_data_t *data) {
@@ -491,7 +499,7 @@ static const char *HPP_TEMPLATE =
 
 using namespace std::string_literals;
 namespace {{ namespace }} {
-{% if has_sigint %}static bool {{ sigint }}_requested = false;
+{% if has_sigint %}inline bool {{ sigint }}_requested = false;
 {% endif %}
 // List of states
 typedef enum {
@@ -502,7 +510,7 @@ typedef enum {
 } {{ prefix }}state_t;
 
 // State human-readable names
-std::map<{{ prefix }}state_t, char const *> state_names = {
+inline std::map<{{ prefix }}state_t, char const *> state_names = {
 {% for s in states %}  { {{ prefix_upper }}STATE_{{ s.id_upper }}, "{{ s.id_upper }}" },
 {% endfor %}  { {{ prefix_upper }}NUM_STATES, "NUM_STATES" },
   { {{ prefix_upper }}NO_CHANGE, "NO_CHANGE" },
@@ -558,8 +566,8 @@ public:
     if (_states.find(state) == _states.end()) {
       throw std::runtime_error("State not found: "s + state_names[state]);
     }
-    state_t next = _states[state](*_data);
-    if (next == NO_CHANGE) {
+    {{ prefix }}state_t next = _states[state](*_data);
+    if (next == {{ prefix_upper }}NO_CHANGE) {
       next = state;
     }
     return next;
@@ -575,7 +583,7 @@ public:
 
 
   // Setup initial state links
-  void setup(state_t state) {
+  void setup({{ prefix }}state_t state) {
     {% if has_sigint %}{{ namespace }}::{{ sigint }}_requested = false;
     {% endif %}_state.first = state;
     _state.second = state;
@@ -583,7 +591,7 @@ public:
 
   // Evaluate the current state and update the next state
   // to be used when main loop is customized (i.e., not using FSM::run())
-  state_t eval_state() {
+  {{ prefix }}state_t eval_state() {
       _state.first = _state.second;
       _state.second = (*this)(_state.second);
       (*this)(_state.first, _state.second);
@@ -605,10 +613,10 @@ public:
       if (_timing_func) {
         _timing_func();
       }
-    } while (_state.second != {{ prefix_upper }}STATE_{{ first_sink_upper }});
-    // Call the exit state once more:
+    } while ({% if num_sinks == 1 %}_state.second != {{ prefix_upper }}STATE_{{ first_sink_upper }}{% else %}true{% endif %});
+{% if num_sinks == 1 %}    // Call the exit state once more:
     (*this)({{ prefix_upper }}STATE_{{ first_sink_upper }});
-{% if has_sigint %}    std::signal(SIGINT, SIG_DFL);
+{% endif %}{% if has_sigint %}    std::signal(SIGINT, SIG_DFL);
 {% endif %}  }
 
   // Run the FSM from the initial state
@@ -620,7 +628,7 @@ public:
     // State functions
 {% for s in state_dest_info %}    add_state({{ namespace }}::{{ prefix_upper }}STATE_{{ s.id_upper }}, [](DATA_T &data) -> {{ namespace }}::{{ prefix }}state_t {
 {% if use_syslog %}      syslog(LOG_INFO, "[FSM] In state {{ s.id_upper }}");
-{% endif %}      {{ namespace }}::{{ prefix }}state_t next_state = {{ prefix }}do_{{ s.id }}(data);
+{% endif %}      {{ namespace }}::{{ prefix }}state_t next_state = {{ s.function }}(data);
     
       switch (next_state) {
       case {{ namespace }}::{{ prefix_upper }}UNIMPLEMENTED:
@@ -658,15 +666,19 @@ public:
 // C++ Source (_impl.hpp)
 static const char *CPP_TEMPLATE =
     R"({% if use_syslog %}#include <syslog.h>
-{% endif %}    
+{% endif %}
 using namespace std;
-    
+/* USER CODE BEGIN includes */
+/* USER CODE END includes */
+
 // SEARCH FOR Your Code Here FOR CODE INSERTION POINTS!
 
 
 namespace {{ namespace }} {
 
-/*  ____  _        _       
+/* USER CODE BEGIN globals */
+/* USER CODE END globals */
+/*  ____  _        _
  * / ___|| |_ __ _| |_ ___ 
  * \___ \| __/ _` | __/ _ \
  *  ___) | || (_| | ||  __/
@@ -685,8 +697,10 @@ namespace {{ namespace }} {
 {% endif %}template<class T> 
 {{ prefix }}state_t {{ s.function }}(T &data) {
   {{ prefix }}state_t next_state = {{ namespace }}::{{ prefix_upper }}UNIMPLEMENTED;
+  /* USER CODE BEGIN {{ s.function }} */
   /* Your Code Here */
-  
+
+  /* USER CODE END {{ s.function }} */
   return next_state;
 }
 {% endfor %}
@@ -708,7 +722,9 @@ namespace {{ namespace }} {
 {% for e in ti.paths %}// {{ loop.index1 }}. from {{ e.from }} to {{ e.to }}
 {% endfor %}template<class T>
 void {{ ti.name }}(T &data) {
+  /* USER CODE BEGIN {{ ti.name }} */
   /* Your Code Here */
+  /* USER CODE END {{ ti.name }} */
 }
 
 {% endfor %}{% endif %}

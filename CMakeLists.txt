@@ -20,6 +20,8 @@ else()
 endif()
 
 project(gv2fsm_cpp VERSION ${GV2FSM_VERSION} LANGUAGES CXX)
+# Needed at top scope for the C sources of the vendored tree-sitter grammars.
+enable_language(C)
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -55,6 +57,55 @@ set(BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(cxxopts inja)
 
+# tree-sitter: powers context-aware merging of user code during `--update`
+# regeneration. The core library's own CMakeLists.txt is clean (no external
+# tool needed), so it is fetched normally, forced to build static.
+FetchContent_Declare(
+  tree_sitter
+  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
+  GIT_TAG        v0.26.5
+)
+set(_gv2fsm_saved_build_shared_libs ${BUILD_SHARED_LIBS})
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(tree_sitter)
+set(BUILD_SHARED_LIBS ${_gv2fsm_saved_build_shared_libs} CACHE BOOL "" FORCE)
+
+# tree-sitter-c / tree-sitter-cpp grammars: only the sources are fetched
+# (FetchContent_Populate, not MakeAvailable) because each grammar's own
+# CMakeLists.txt regenerates src/parser.c by shelling out to the `tree-sitter`
+# CLI tool, which we don't want as a required build-time dependency. The
+# pre-generated parser.c (and scanner.c for C++) are already committed in
+# each repo, so we compile those directly ourselves.
+FetchContent_Declare(
+  tree_sitter_c
+  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-c.git
+  GIT_TAG        v0.24.2
+)
+FetchContent_Declare(
+  tree_sitter_cpp
+  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-cpp.git
+  GIT_TAG        v0.23.4
+)
+FetchContent_Populate(tree_sitter_c)
+FetchContent_Populate(tree_sitter_cpp)
+
+add_library(gv2fsm_ts_c STATIC ${tree_sitter_c_SOURCE_DIR}/src/parser.c)
+target_include_directories(gv2fsm_ts_c PRIVATE ${tree_sitter_c_SOURCE_DIR}/src)
+set_target_properties(gv2fsm_ts_c PROPERTIES
+  C_STANDARD 11
+  POSITION_INDEPENDENT_CODE ON
+)
+
+add_library(gv2fsm_ts_cpp STATIC
+  ${tree_sitter_cpp_SOURCE_DIR}/src/parser.c
+  ${tree_sitter_cpp_SOURCE_DIR}/src/scanner.c
+)
+target_include_directories(gv2fsm_ts_cpp PRIVATE ${tree_sitter_cpp_SOURCE_DIR}/src)
+set_target_properties(gv2fsm_ts_cpp PROPERTIES
+  C_STANDARD 11
+  POSITION_INDEPENDENT_CODE ON
+)
+
 option(GV2FSM_SHARED_ONLY "Build only the shared gv2fsm library" OFF)
 option(GV2FSM_STATIC_ONLY "Build only the static gv2fsm library" OFF)
 
@@ -84,6 +135,7 @@ set(GV2FSM_LIBRARY_SOURCES
   src/dot_parser.cpp
   src/fsm.cpp
   src/generator.cpp
+  src/merge.cpp
 )
 
 set(GV2FSM_EXPORT_TARGETS gv2fsm_interface)
@@ -99,6 +151,9 @@ function(gv2fsm_configure_library target_name)
     PRIVATE
       $<BUILD_INTERFACE:cxxopts::cxxopts>
       $<BUILD_INTERFACE:pantor::inja>
+      $<BUILD_INTERFACE:tree-sitter>
+      $<BUILD_INTERFACE:gv2fsm_ts_c>
+      $<BUILD_INTERFACE:gv2fsm_ts_cpp>
   )
   set_target_properties(${target_name} PROPERTIES OUTPUT_NAME gv2fsm)
 endfunction()
@@ -147,6 +202,7 @@ install(FILES
   src/fsm.hpp
   src/generator.hpp
   src/gv2fsm.hpp
+  src/merge.hpp
   "${CMAKE_CURRENT_BINARY_DIR}/version.hpp"
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/gv2fsm
 )
@@ -207,7 +263,7 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Graphviz DOT to Finite State Machine C/C++ code generator")
 set(CPACK_PACKAGE_CONTACT "paolo.bosetti@unitn.it")
 set(CPACK_PACKAGE_VENDOR "gv2fsm")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

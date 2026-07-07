@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <string>
 
@@ -11,6 +12,7 @@
 #include "fsm.hpp"
 #include "generator.hpp"
 #include "gv2fsm.hpp"
+#include "merge.hpp"
 #include "version.hpp"
 
 namespace fs = std::filesystem;
@@ -54,6 +56,31 @@ static fs::path write_tmp_text(const std::string &content,
   std::ofstream f(p);
   f << content;
   return p;
+}
+
+static int run_cmd(const std::string &cmd) {
+  int rc = std::system(cmd.c_str());
+#ifdef _WIN32
+  return rc;
+#else
+  return WEXITSTATUS(rc);
+#endif
+}
+
+static int run_lib(std::vector<std::string> args, std::string &out,
+                   std::string &err) {
+  std::vector<char *> argv;
+  argv.reserve(args.size());
+  for (auto &arg : args)
+    argv.push_back(arg.data());
+
+  std::ostringstream out_stream;
+  std::ostringstream err_stream;
+  int rc = gv2fsm::run(static_cast<int>(argv.size()), argv.data(), out_stream,
+                       err_stream);
+  out = out_stream.str();
+  err = err_stream.str();
+  return rc;
 }
 
 // ── DotParser unit tests ─────────────────────────────────────────────────────
@@ -439,6 +466,325 @@ TEST_CASE("generate_source_c include uses basename", "[generator]") {
   CHECK_THAT(c, ContainsSubstring("#include \"output.h\""));
 }
 
+// ── Parity (C vs C++) regression tests ───────────────────────────────────────
+// These exercise CLI option combinations that only broke the C++ output path
+// (the C templates were already correct for all of them).
+
+TEST_CASE("Parity: C++ with --prefix compiles", "[parity]") {
+  fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_prefix";
+  fs::create_directories(out_dir);
+  fs::path out_base = out_dir / "pfx";
+  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+
+  std::string cmd = gv2fsm + " -p pfxns -x PFX -o " + out_base.string() +
+                    " --cpp -f " + DOT_FILE.string();
+  REQUIRE(run_cmd(cmd) == 0);
+
+  fs::path main_src = out_dir / "main.cpp";
+  {
+    std::ofstream f(main_src);
+    f << "#include \"pfx.hpp\"\n"
+         "struct Data { int count; };\n"
+         "int main() { Data d{1}; auto fsm = pfxns::FiniteStateMachine(&d); return 0; }\n";
+  }
+  std::string compile_cmd = "clang++ -std=c++20 -I " + out_dir.string() +
+                            " -fsyntax-only " + main_src.string();
+  CHECK(run_cmd(compile_cmd) == 0);
+  fs::remove_all(out_dir);
+}
+
+TEST_CASE("Parity: C++ with a custom node label compiles", "[parity]") {
+  fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_label";
+  fs::create_directories(out_dir);
+
+  auto dot = write_tmp_dot(R"(digraph "custom label test" {
+  init
+  idle [label="custom_idle_func"]
+  stop
+  init -> idle
+  idle -> idle
+  idle -> stop
+}
+)",
+                          "parity_label.dot");
+
+  fs::path out_base = out_dir / "lbl";
+  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string cmd =
+      gv2fsm + " -p lblns -o " + out_base.string() + " --cpp -f " + dot.string();
+  REQUIRE(run_cmd(cmd) == 0);
+
+  auto hpp = read_all(out_base.string() + ".hpp");
+  CHECK_THAT(hpp, ContainsSubstring("custom_idle_func"));
+
+  fs::path main_src = out_dir / "main.cpp";
+  {
+    std::ofstream f(main_src);
+    f << "#include \"lbl.hpp\"\n"
+         "struct Data { int count; };\n"
+         "int main() { Data d{1}; auto fsm = lblns::FiniteStateMachine(&d); return 0; }\n";
+  }
+  std::string compile_cmd = "clang++ -std=c++20 -I " + out_dir.string() +
+                            " -fsyntax-only " + main_src.string();
+  CHECK(run_cmd(compile_cmd) == 0);
+  fs::remove(dot);
+  fs::remove_all(out_dir);
+}
+
+TEST_CASE("Parity: C++ with no sink state compiles", "[parity]") {
+  fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_nosink";
+  fs::create_directories(out_dir);
+
+  auto dot = write_tmp_dot(R"(digraph "no sink test" {
+  init
+  idle
+  init -> idle
+  idle -> idle
+}
+)",
+                          "parity_nosink.dot");
+
+  fs::path out_base = out_dir / "ns";
+  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string cmd =
+      gv2fsm + " -p nsns -o " + out_base.string() + " --cpp -f " + dot.string();
+  REQUIRE(run_cmd(cmd) == 0);
+
+  auto hpp = read_all(out_base.string() + ".hpp");
+  CHECK_THAT(hpp, ContainsSubstring("while (true)"));
+
+  fs::path main_src = out_dir / "main.cpp";
+  {
+    std::ofstream f(main_src);
+    f << "#include \"ns.hpp\"\n"
+         "struct Data { int count; };\n"
+         "int main() { Data d{1}; auto fsm = nsns::FiniteStateMachine(&d); return 0; }\n";
+  }
+  std::string compile_cmd = "clang++ -std=c++20 -I " + out_dir.string() +
+                            " -fsyntax-only " + main_src.string();
+  CHECK(run_cmd(compile_cmd) == 0);
+  fs::remove(dot);
+  fs::remove_all(out_dir);
+}
+
+TEST_CASE("Parity: --ino routes to the C template and produces .h/.cpp", "[parity]") {
+  fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_ino";
+  fs::create_directories(out_dir);
+  fs::path out_base = out_dir / "inofsm";
+  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+
+  std::string cmd = gv2fsm + " -p ino -o " + out_base.string() + " --ino -f " +
+                    DOT_FILE.string();
+  REQUIRE(run_cmd(cmd) == 0);
+
+  CHECK(fs::exists(out_base.string() + ".h"));
+  CHECK(fs::exists(out_base.string() + ".cpp"));
+  CHECK_FALSE(fs::exists(out_base.string() + "_impl.hpp"));
+
+  auto h = read_all(out_base.string() + ".h");
+  auto c = read_all(out_base.string() + ".cpp");
+  CHECK_THAT(h, ContainsSubstring("arduino.h"));
+  CHECK_THAT(c, ContainsSubstring("void loop()"));
+
+  fs::remove_all(out_dir);
+}
+
+TEST_CASE("Parity: C++ header has no ODR violation across two translation units",
+          "[parity]") {
+  fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_odr";
+  fs::create_directories(out_dir);
+  fs::path out_base = out_dir / "odrfsm";
+  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+
+  std::string cmd = gv2fsm + " -p odrns -k stop -o " + out_base.string() +
+                    " --cpp -f " + DOT_FILE.string();
+  REQUIRE(run_cmd(cmd) == 0);
+
+  fs::path tu1 = out_dir / "tu1.cpp";
+  fs::path tu2 = out_dir / "tu2.cpp";
+  {
+    std::ofstream f(tu1);
+    f << "#include \"odrfsm.hpp\"\n"
+         "void touch1() { (void)odrns::state_names; (void)odrns::stop_requested; }\n";
+  }
+  {
+    std::ofstream f(tu2);
+    f << "#include \"odrfsm.hpp\"\n"
+         "struct Data { int count; };\n"
+         "int main() { Data d{1}; auto fsm = odrns::FiniteStateMachine(&d);\n"
+         "  (void)odrns::state_names; return 0; }\n";
+  }
+  std::string build_cmd = "clang++ -std=c++20 -I " + out_dir.string() + " " +
+                          tu1.string() + " " + tu2.string() + " -o " +
+                          (out_dir / "odr_bin").string();
+  CHECK(run_cmd(build_cmd) == 0);
+  fs::remove_all(out_dir);
+}
+
+// ── Merge (USER CODE markers + tree-sitter legacy import) ────────────────────
+
+static const char *MERGE_V2_CPP_DOT = R"(digraph "gv2fsm example v2" {
+  init
+  idle [label="do_idle"]
+  setup [label="do_setup"]
+  running [label="do_running"]
+  paused [label="do_paused"]
+  stop [label="do_stop"]
+
+  init -> idle [label="init_to_idle"]
+  idle -> idle [label="stay"]
+  idle -> setup [label="to_setup"]
+  setup -> running  [label="#"]
+  running -> running [label="stay"]
+  running -> paused [label="to_paused"]
+  paused -> running [label="to_running"]
+  running -> stop
+}
+)";
+
+TEST_CASE("merge_generated preserves marker edits, adds new stubs, orphans removed ones",
+          "[merge]") {
+  FSM fsm1;
+  fsm1.project_name = "sm";
+  REQUIRE(parse_sm(fsm1));
+  std::string fresh1 = generate_source_cpp(fsm1);
+
+  std::string existing = fresh1;
+  auto replace_once = [&](const std::string &from, const std::string &to) {
+    auto pos = existing.find(from);
+    REQUIRE(pos != std::string::npos);
+    existing.replace(pos, from.size(), to);
+  };
+  replace_once("/* USER CODE BEGIN do_idle */\n  /* Your Code Here */\n\n  "
+              "/* USER CODE END do_idle */",
+              "/* USER CODE BEGIN do_idle */\n  next_state = STATE_SETUP;\n  "
+              "/* USER CODE END do_idle */");
+  replace_once(
+      "/* USER CODE BEGIN stay */\n  /* Your Code Here */\n  /* USER CODE END stay */",
+      "/* USER CODE BEGIN stay */\n  counter++;\n  /* USER CODE END stay */");
+
+  auto v2_path = write_tmp_dot(MERGE_V2_CPP_DOT, "merge_v2.dot");
+  FSM fsm2;
+  fsm2.project_name = "sm";
+  std::string err;
+  REQUIRE(fsm2.parse(v2_path.string(), err));
+  std::string fresh2 = generate_source_cpp(fsm2);
+
+  auto result = merge_generated(fresh2, existing, SourceLang::Cpp);
+  CHECK_FALSE(result.legacy_import);
+  CHECK(result.kept == 11);
+  CHECK(result.added == 3);
+  CHECK(result.orphaned == 1);
+
+  CHECK_THAT(result.text, ContainsSubstring("next_state = STATE_SETUP;"));
+  CHECK_THAT(result.text, ContainsSubstring("counter++;"));
+  CHECK_THAT(result.text, ContainsSubstring("do_paused"));
+  CHECK_THAT(result.text, ContainsSubstring("ORPHANED to_idle"));
+
+  fs::remove(v2_path);
+}
+
+TEST_CASE("merge_generated preserves C state body while regenerating its switch",
+          "[merge]") {
+  FSM fsm1;
+  REQUIRE(parse_sm(fsm1));
+  std::string fresh1 = generate_source_c(fsm1);
+
+  std::string existing = fresh1;
+  std::string from = "/* USER CODE BEGIN do_idle */\n  /* Your Code Here */\n\n  "
+                     "/* USER CODE END do_idle */";
+  auto pos = existing.find(from);
+  REQUIRE(pos != std::string::npos);
+  existing.replace(pos, from.size(),
+                   "/* USER CODE BEGIN do_idle */\n  next_state = STATE_STOP; "
+                   "// early exit\n  /* USER CODE END do_idle */");
+
+  // v2: idle grows a direct transition straight to stop.
+  auto v2_path = write_tmp_dot(R"(digraph "v2c" {
+  init
+  idle [label="do_idle"]
+  setup [label="do_setup"]
+  running [label="do_running"]
+  stop [label="do_stop"]
+
+  init -> idle [label="init_to_idle"]
+  idle -> idle [label="stay"]
+  idle -> setup [label="to_setup"]
+  idle -> stop [label="to_stop"]
+  setup -> running  [label="#"]
+  running -> running [label="stay"]
+  running -> idle [label="to_idle"]
+  running -> stop
+}
+)",
+                              "merge_v2c.dot");
+  FSM fsm2;
+  std::string err;
+  REQUIRE(fsm2.parse(v2_path.string(), err));
+  std::string fresh2 = generate_source_c(fsm2);
+
+  auto result = merge_generated(fresh2, existing, SourceLang::C);
+  CHECK_FALSE(result.legacy_import);
+  CHECK_THAT(result.text, ContainsSubstring("next_state = STATE_STOP; // early exit"));
+
+  auto idle_fn = result.text.find("state_t do_idle(state_data_t *data)");
+  REQUIRE(idle_fn != std::string::npos);
+  auto idle_switch = result.text.find("switch (next_state)", idle_fn);
+  REQUIRE(idle_switch != std::string::npos);
+  auto idle_fn_end = result.text.find("\n}\n", idle_switch);
+  REQUIRE(idle_fn_end != std::string::npos);
+  std::string idle_tail = result.text.substr(idle_switch, idle_fn_end - idle_switch);
+  CHECK_THAT(idle_tail, ContainsSubstring("case STATE_STOP:"));
+
+  fs::remove(v2_path);
+}
+
+TEST_CASE("merge_generated recovers bodies via tree-sitter when markers are absent",
+          "[merge]") {
+  FSM fsm;
+  fsm.project_name = "sm";
+  REQUIRE(parse_sm(fsm));
+  std::string fresh = generate_source_cpp(fsm);
+
+  // Simulate a file generated before markers existed by stripping the marker
+  // comment lines, then hand-edit two bodies exactly as a user would --
+  // inserting code and leaving the old placeholder comment in place.
+  std::regex marker_line(
+      R"([ \t]*/\* USER CODE (?:BEGIN|END) [A-Za-z_][A-Za-z0-9_]* \*/\n)");
+  std::string existing = std::regex_replace(fresh, marker_line, "");
+  REQUIRE(existing.find("USER CODE") == std::string::npos);
+
+  {
+    std::string anchor = "state_t do_idle(T &data) {\n  state_t next_state = "
+                         "sm::UNIMPLEMENTED;\n";
+    auto pos = existing.find(anchor);
+    REQUIRE(pos != std::string::npos);
+    existing.insert(pos + anchor.size(), "  next_state = STATE_SETUP;\n");
+  }
+  {
+    std::string anchor = "void stay(T &data) {\n";
+    auto pos = existing.find(anchor);
+    REQUIRE(pos != std::string::npos);
+    existing.insert(pos + anchor.size(), "  counter++;\n");
+  }
+
+  auto result = merge_generated(fresh, existing, SourceLang::Cpp);
+  CHECK(result.legacy_import);
+  CHECK_THAT(result.text, ContainsSubstring("next_state = STATE_SETUP;"));
+  CHECK_THAT(result.text, ContainsSubstring("counter++;"));
+
+  // The recovered do_idle body must not duplicate the generated prologue.
+  auto count_occurrences = [&](const std::string &needle) {
+    size_t n = 0, pos = 0;
+    while ((pos = result.text.find(needle, pos)) != std::string::npos) {
+      n++;
+      pos += needle.size();
+    }
+    return n;
+  };
+  CHECK(count_occurrences("state_t next_state = sm::UNIMPLEMENTED;") == 5);
+}
+
 // ── Version ──────────────────────────────────────────────────────────────────
 
 TEST_CASE("GV2FSM_VERSION is defined and non-empty", "[version]") {
@@ -449,31 +795,6 @@ TEST_CASE("GV2FSM_VERSION is defined and non-empty", "[version]") {
 }
 
 // ── Smoke tests ──────────────────────────────────────────────────────────────
-
-static int run_cmd(const std::string &cmd) {
-  int rc = std::system(cmd.c_str());
-#ifdef _WIN32
-  return rc;
-#else
-  return WEXITSTATUS(rc);
-#endif
-}
-
-static int run_lib(std::vector<std::string> args, std::string &out,
-                   std::string &err) {
-  std::vector<char *> argv;
-  argv.reserve(args.size());
-  for (auto &arg : args)
-    argv.push_back(arg.data());
-
-  std::ostringstream out_stream;
-  std::ostringstream err_stream;
-  int rc = gv2fsm::run(static_cast<int>(argv.size()), argv.data(), out_stream,
-                       err_stream);
-  out = out_stream.str();
-  err = err_stream.str();
-  return rc;
-}
 
 TEST_CASE("Smoke: gv2fsm generates C++ files", "[smoke]") {
   fs::path out_dir = fs::temp_directory_path() / "gv2fsm_smoke_gen";

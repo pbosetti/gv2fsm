@@ -2,6 +2,7 @@
 
 #include "fsm.hpp"
 #include "generator.hpp"
+#include "merge.hpp"
 #include "version.hpp"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 namespace gv2fsm {
@@ -38,11 +40,15 @@ int run(int argc, char *argv[], std::ostream &out, std::ostream &err) {
     ("s,source-only", "Only generate source file")
     ("x,prefix", "Prepend PREFIX to names of generated functions and objects",
      cxxopts::value<std::string>())
-    ("i,ino", "Generate a single .ino file (for Arduino)")
+    ("i,ino", "Generate .h/.cpp sources tailored for Arduino "
+              "(Serial instead of syslog, no SIGINT support)")
     ("l,log", "Add syslog calls in state and transition functions")
     ("k,sigint", "Install SIGINT handler that points to STATE",
      cxxopts::value<std::string>())
     ("f,force", "Overwrite existing output files")
+    ("u,update", "Update an existing source file, preserving USER CODE marker "
+                 "regions (falls back to a best-effort tree-sitter recovery "
+                 "for files generated before markers existed)")
     ("h,help", "Prints this help")
     ("dotfile", "Input .dot file", cxxopts::value<std::string>());
   // clang-format on
@@ -98,6 +104,7 @@ int run(int argc, char *argv[], std::ostream &out, std::ostream &err) {
     sm.sigint = result["sigint"].as<std::string>();
 
   bool force = result.count("force") > 0;
+  bool update = result.count("update") > 0;
 
   if (sm.ino) {
     sm.plain_c = true;
@@ -194,26 +201,53 @@ int run(int argc, char *argv[], std::ostream &out, std::ostream &err) {
 
   if (gen_header) {
     std::string name = sm.plain_c ? sm.cname + ".h" : sm.cname + ".hpp";
-    if (!force && fs::exists(name)) {
-      err << "ERROR: " << name << " already exists (use -f to overwrite)\n";
+    if (!force && !update && fs::exists(name)) {
+      err << "ERROR: " << name << " already exists (use -f to overwrite or -u to update)\n";
       return 5;
     }
+    // The header carries no USER CODE regions, so there is nothing to merge:
+    // -u simply behaves like -f for this file.
     std::ofstream f(name);
     f << (sm.plain_c ? generate_header_h(sm) : generate_header_hpp(sm));
     out << "Generated header " << name << "\n";
   }
 
   if (gen_source) {
-    std::string name = (sm.ino || !sm.plain_c) ? sm.cname + "_impl.hpp"
-                                               : sm.cname + ".c";
-    if (!force && fs::exists(name)) {
-      err << "ERROR: " << name << " already exists (use -f to overwrite)\n";
+    std::string name = !sm.plain_c  ? sm.cname + "_impl.hpp"
+                       : sm.ino     ? sm.cname + ".cpp"
+                                    : sm.cname + ".c";
+    bool exists = fs::exists(name);
+    if (!force && !update && exists) {
+      err << "ERROR: " << name << " already exists (use -f to overwrite or -u to update)\n";
       return 5;
     }
-    std::ofstream f(name);
-    f << ((sm.ino || !sm.plain_c) ? generate_source_cpp(sm)
-                                  : generate_source_c(sm));
-    out << "Generated source " << name << "\n";
+    std::string fresh = !sm.plain_c ? generate_source_cpp(sm) : generate_source_c(sm);
+
+    if (update && exists) {
+      std::ifstream in(name);
+      std::ostringstream ss;
+      ss << in.rdbuf();
+      std::string existing = ss.str();
+      in.close();
+
+      fs::copy_file(name, name + ".bak", fs::copy_options::overwrite_existing);
+      auto merged = merge_generated(fresh, existing,
+                                    sm.plain_c ? SourceLang::C : SourceLang::Cpp);
+      std::ofstream f(name);
+      f << merged.text;
+      out << "Updated source " << name << " (kept " << merged.kept << ", added "
+          << merged.added << ", orphaned " << merged.orphaned << ")\n";
+      if (merged.legacy_import)
+        out << "  " << name
+            << " had no USER CODE markers: recovered bodies via tree-sitter "
+               "(best effort, please review the diff against " << name
+            << ".bak)\n";
+      out << "Backup saved to " << name << ".bak\n";
+    } else {
+      std::ofstream f(name);
+      f << fresh;
+      out << "Generated source " << name << "\n";
+    }
   }
 
   return 0;
