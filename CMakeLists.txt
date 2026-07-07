@@ -164,6 +164,15 @@ if(GV2FSM_BUILD_STATIC)
   add_library(gv2fsm_static STATIC ${GV2FSM_LIBRARY_SOURCES})
   gv2fsm_configure_library(gv2fsm_static)
   set_target_properties(gv2fsm_static PROPERTIES EXPORT_NAME Gv2FsmStatic)
+  if(WIN32)
+    # MSBuild reserves an implicit import-library slot for every linked
+    # binary at "<OutDir>/<TargetName>.lib", even a plain console EXE that
+    # exports nothing. The "gv2fsm" executable's reserved slot therefore
+    # collides with the static library's own "gv2fsm.lib" (both derive from
+    # the name "gv2fsm"). Give the static library a distinct name on Windows
+    # so nothing is ever named "gv2fsm.lib".
+    set_target_properties(gv2fsm_static PROPERTIES OUTPUT_NAME gv2fsm_static)
+  endif()
   list(APPEND GV2FSM_EXPORT_TARGETS gv2fsm_static)
 endif()
 
