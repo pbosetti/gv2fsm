@@ -340,7 +340,26 @@ extern transition_func_t *const {{ prefix }}transition_table[{{ prefix_upper }}N
 
 // C Source (.c)
 static const char *CC_TEMPLATE =
-    R"({% if not is_ino %}{% if use_syslog %}#include <syslog.h>
+    R"({% if not is_ino %}{% if use_syslog %}#ifdef _WIN32
+#ifndef LOG_INFO
+#define LOG_EMERG   0
+#define LOG_ALERT   1
+#define LOG_CRIT    2
+#define LOG_ERR     3
+#define LOG_WARNING 4
+#define LOG_NOTICE  5
+#define LOG_INFO    6
+#define LOG_DEBUG   7
+#define LOG_PID     0x01
+#define LOG_PERROR  0x20
+#define LOG_USER    (1<<3)
+#define openlog(ident, option, facility) ((void)0)
+#define closelog() ((void)0)
+#define syslog(priority, ...) ((void)0)
+#endif
+#else
+#include <syslog.h>
+#endif
 {% endif %}{% endif %}#include "{{ cname_base }}.h"
 /* USER CODE BEGIN includes */
 /* USER CODE END includes */
@@ -491,8 +510,27 @@ static const char *HPP_TEMPLATE =
 #include <map>
 #include <string>
 #include <tuple>
-{% if use_syslog %}#include <syslog.h>
-{% endif %}{% if has_sigint %}// Install signal handler: 
+{% if use_syslog %}#ifdef _WIN32
+#ifndef LOG_INFO
+#define LOG_EMERG   0
+#define LOG_ALERT   1
+#define LOG_CRIT    2
+#define LOG_ERR     3
+#define LOG_WARNING 4
+#define LOG_NOTICE  5
+#define LOG_INFO    6
+#define LOG_DEBUG   7
+#define LOG_PID     0x01
+#define LOG_PERROR  0x20
+#define LOG_USER    (1<<3)
+#define openlog(ident, option, facility) ((void)0)
+#define closelog() ((void)0)
+#define syslog(priority, ...) ((void)0)
+#endif
+#else
+#include <syslog.h>
+#endif
+{% endif %}{% if has_sigint %}// Install signal handler:
 // SIGINT requests a transition to state {{ sigint }}
 #include <csignal>
 {% endif %}
@@ -665,7 +703,26 @@ public:
 
 // C++ Source (_impl.hpp)
 static const char *CPP_TEMPLATE =
-    R"({% if use_syslog %}#include <syslog.h>
+    R"({% if use_syslog %}#ifdef _WIN32
+#ifndef LOG_INFO
+#define LOG_EMERG   0
+#define LOG_ALERT   1
+#define LOG_CRIT    2
+#define LOG_ERR     3
+#define LOG_WARNING 4
+#define LOG_NOTICE  5
+#define LOG_INFO    6
+#define LOG_DEBUG   7
+#define LOG_PID     0x01
+#define LOG_PERROR  0x20
+#define LOG_USER    (1<<3)
+#define openlog(ident, option, facility) ((void)0)
+#define closelog() ((void)0)
+#define syslog(priority, ...) ((void)0)
+#endif
+#else
+#include <syslog.h>
+#endif
 {% endif %}
 using namespace std;
 /* USER CODE BEGIN includes */
