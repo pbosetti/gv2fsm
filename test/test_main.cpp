@@ -20,8 +20,12 @@ using Catch::Matchers::ContainsSubstring;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-static const fs::path SRC_DIR  = SOURCE_DIR;   // set by CMake
-static const fs::path BIN_DIR  = BINARY_DIR;   // set by CMake
+// CMake always emits SOURCE_DIR/BINARY_DIR with forward slashes, even on
+// Windows; make_preferred() normalizes to the native separator so every
+// path built from these (via operator/) stays consistent instead of mixing
+// '/' and '\', which cmd.exe fails to resolve as a program name.
+static const fs::path SRC_DIR  = fs::path(SOURCE_DIR).make_preferred();
+static const fs::path BIN_DIR  = fs::path(BINARY_DIR).make_preferred();
 static const fs::path DOT_FILE = SRC_DIR / "examples" / "sm.dot";
 static const fs::path SIMPLE_DOT = SRC_DIR / "examples" / "simple.dot";
 
