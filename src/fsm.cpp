@@ -22,7 +22,7 @@ bool FSM::parse(const std::string &filename, std::string &error_msg) {
   // Set cname from filename if not already set
   if (cname.empty()) {
     auto base = filename;
-    auto slash = base.rfind('/');
+    auto slash = base.find_last_of("/\\");
     if (slash != std::string::npos)
       base = base.substr(slash + 1);
     auto dot = base.rfind('.');

@@ -35,7 +35,7 @@ static std::string to_upper(const std::string &s) {
 
 static std::string basename_no_ext(const std::string &path) {
   auto s = path;
-  auto slash = s.rfind('/');
+  auto slash = s.find_last_of("/\\");
   if (slash != std::string::npos)
     s = s.substr(slash + 1);
   auto dot = s.rfind('.');
