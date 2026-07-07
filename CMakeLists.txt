@@ -31,6 +31,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+cmake_policy(SET CMP0169 OLD) # CMake 3.16+ warns about using `FetchContent` in a subdirectory, but we need it here to fetch dependencies for the library and the test suite.
+
 include(CMakePackageConfigHelpers)
 include(FetchContent)
 include(GNUInstallDirs)
@@ -62,8 +64,8 @@ FetchContent_MakeAvailable(cxxopts inja)
 # tool needed), so it is fetched normally, forced to build static.
 FetchContent_Declare(
   tree_sitter
-  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
-  GIT_TAG        v0.26.5
+  URL https://github.com/tree-sitter/tree-sitter/archive/refs/tags/v0.26.10.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(_gv2fsm_saved_build_shared_libs ${BUILD_SHARED_LIBS})
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -78,13 +80,13 @@ set(BUILD_SHARED_LIBS ${_gv2fsm_saved_build_shared_libs} CACHE BOOL "" FORCE)
 # each repo, so we compile those directly ourselves.
 FetchContent_Declare(
   tree_sitter_c
-  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-c.git
-  GIT_TAG        v0.24.2
+  URL https://github.com/tree-sitter/tree-sitter-c/archive/refs/tags/v0.24.2.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_Declare(
   tree_sitter_cpp
-  GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter-cpp.git
-  GIT_TAG        v0.23.4
+  URL https://github.com/tree-sitter/tree-sitter-cpp/archive/refs/tags/v0.23.4.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_Populate(tree_sitter_c)
 FetchContent_Populate(tree_sitter_cpp)
