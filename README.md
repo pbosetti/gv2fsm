@@ -40,7 +40,7 @@ This is the C++ successor to the original Ruby-based [gv_fsm](https://github.com
 
 ### Pre-compiled binaries
 
-Grab a package from the [latest release](https://github.com/pbosetti/gv2fsm/releases/latest) — macOS (universal) and Linux (22.04+, x86_64/arm64) are provided.
+Grab a package from the [latest release](https://github.com/pbosetti/gv2fsm/releases/latest) — macOS (universal), Linux (22.04+, x86_64/arm64), and Windows (x86_64) are provided.
 
 ### Build from source
 
