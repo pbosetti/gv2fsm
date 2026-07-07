@@ -171,6 +171,13 @@ if(GV2FSM_BUILD_SHARED)
   add_library(gv2fsm_shared SHARED ${GV2FSM_LIBRARY_SOURCES})
   gv2fsm_configure_library(gv2fsm_shared)
   set_target_properties(gv2fsm_shared PROPERTIES EXPORT_NAME Gv2FsmShared)
+  if(WIN32)
+    # On Windows a DLL's import library is also a ".lib" file, which would
+    # otherwise collide with the static library's "gv2fsm.lib" (both share
+    # OUTPUT_NAME "gv2fsm" above). Give the import library its own name so
+    # the two targets don't fight over the same output path.
+    set_target_properties(gv2fsm_shared PROPERTIES ARCHIVE_OUTPUT_NAME gv2fsm_dll)
+  endif()
   list(APPEND GV2FSM_EXPORT_TARGETS gv2fsm_shared)
 endif()
 
@@ -241,8 +248,8 @@ if(GV2FSM_ENABLE_TESTS)
 set(BUILD_TESTING ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
   Catch2
-  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-  GIT_TAG        v3.5.2
+  URL https://github.com/catchorg/Catch2/archive/refs/tags/v3.15.1.tar.gz
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(Catch2)
 
