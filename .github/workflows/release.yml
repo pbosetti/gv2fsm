@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ${{ matrix.cmake_extra }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM="3.5" ${{ matrix.cmake_extra }}
 
       - name: Build
         run: cmake --build build --config Release --parallel
