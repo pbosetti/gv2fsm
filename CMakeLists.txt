@@ -48,7 +48,7 @@ FetchContent_Declare(
 FetchContent_Declare(
   inja
   GIT_REPOSITORY https://github.com/pantor/inja.git
-  GIT_TAG        v3.4.0
+  GIT_TAG        v3.5.0
 )
 
 set(INJA_USE_EMBEDDED_JSON ON CACHE BOOL "" FORCE)
