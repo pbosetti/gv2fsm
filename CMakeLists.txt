@@ -269,6 +269,10 @@ target_link_libraries(gv2fsm_tests PRIVATE Catch2::Catch2WithMain ${GV2FSM_LINK_
 target_compile_definitions(gv2fsm_tests PRIVATE
   SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
   BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+  # Full path to the built executable, including the per-config subdirectory
+  # (e.g. "Release/") and the ".exe" suffix that multi-config generators such
+  # as Visual Studio add. "${CMAKE_CURRENT_BINARY_DIR}/gv2fsm" would miss both.
+  GV2FSM_EXE="$<TARGET_FILE:gv2fsm>"
 )
 
 include(CTest)

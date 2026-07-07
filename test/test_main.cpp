@@ -20,12 +20,14 @@ using Catch::Matchers::ContainsSubstring;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-// CMake always emits SOURCE_DIR/BINARY_DIR with forward slashes, even on
-// Windows; make_preferred() normalizes to the native separator so every
-// path built from these (via operator/) stays consistent instead of mixing
-// '/' and '\', which cmd.exe fails to resolve as a program name.
+// CMake emits SOURCE_DIR with forward slashes even on Windows; make_preferred()
+// normalizes to the native separator so paths built from it stay consistent.
 static const fs::path SRC_DIR  = fs::path(SOURCE_DIR).make_preferred();
-static const fs::path BIN_DIR  = fs::path(BINARY_DIR).make_preferred();
+// Full path to the built gv2fsm executable, provided by CMake as
+// $<TARGET_FILE:gv2fsm>. It already carries the per-config subdirectory
+// (e.g. "Release/") and the ".exe" suffix on multi-config generators like
+// Visual Studio, which "<build>/gv2fsm" would miss.
+static const fs::path GV2FSM_BIN = fs::path(GV2FSM_EXE).make_preferred();
 static const fs::path DOT_FILE = SRC_DIR / "examples" / "sm.dot";
 static const fs::path SIMPLE_DOT = SRC_DIR / "examples" / "simple.dot";
 
@@ -85,6 +87,20 @@ static int run_lib(std::vector<std::string> args, std::string &out,
   out = out_stream.str();
   err = err_stream.str();
   return rc;
+}
+
+// The parity/smoke tests that compile generated code verify that the *output*
+// is well-formed C/C++ — a property independent of the host OS. They shell out
+// to clang++, so they are gated on this helper: skipped on Windows (whose
+// default toolchain is not clang++, and whose builds can't provide the POSIX
+// <syslog.h> the -l output pulls in) and wherever clang++ is not on PATH. The
+// Linux and macOS CI legs still exercise these checks in full.
+static bool can_run_compile_tests() {
+#ifdef _WIN32
+  return false;
+#else
+  return std::system("clang++ --version >/dev/null 2>&1") == 0;
+#endif
 }
 
 // ── DotParser unit tests ─────────────────────────────────────────────────────
@@ -478,11 +494,16 @@ TEST_CASE("Parity: C++ with --prefix compiles", "[parity]") {
   fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_prefix";
   fs::create_directories(out_dir);
   fs::path out_base = out_dir / "pfx";
-  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string gv2fsm = GV2FSM_BIN.string();
 
   std::string cmd = gv2fsm + " -p pfxns -x PFX -o " + out_base.string() +
                     " --cpp -f " + DOT_FILE.string();
   REQUIRE(run_cmd(cmd) == 0);
+
+  if (!can_run_compile_tests()) {
+    fs::remove_all(out_dir);
+    SKIP("clang++ not available for the compile check");
+  }
 
   fs::path main_src = out_dir / "main.cpp";
   {
@@ -513,13 +534,19 @@ TEST_CASE("Parity: C++ with a custom node label compiles", "[parity]") {
                           "parity_label.dot");
 
   fs::path out_base = out_dir / "lbl";
-  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string gv2fsm = GV2FSM_BIN.string();
   std::string cmd =
       gv2fsm + " -p lblns -o " + out_base.string() + " --cpp -f " + dot.string();
   REQUIRE(run_cmd(cmd) == 0);
 
   auto hpp = read_all(out_base.string() + ".hpp");
   CHECK_THAT(hpp, ContainsSubstring("custom_idle_func"));
+
+  if (!can_run_compile_tests()) {
+    fs::remove(dot);
+    fs::remove_all(out_dir);
+    SKIP("clang++ not available for the compile check");
+  }
 
   fs::path main_src = out_dir / "main.cpp";
   {
@@ -549,13 +576,19 @@ TEST_CASE("Parity: C++ with no sink state compiles", "[parity]") {
                           "parity_nosink.dot");
 
   fs::path out_base = out_dir / "ns";
-  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string gv2fsm = GV2FSM_BIN.string();
   std::string cmd =
       gv2fsm + " -p nsns -o " + out_base.string() + " --cpp -f " + dot.string();
   REQUIRE(run_cmd(cmd) == 0);
 
   auto hpp = read_all(out_base.string() + ".hpp");
   CHECK_THAT(hpp, ContainsSubstring("while (true)"));
+
+  if (!can_run_compile_tests()) {
+    fs::remove(dot);
+    fs::remove_all(out_dir);
+    SKIP("clang++ not available for the compile check");
+  }
 
   fs::path main_src = out_dir / "main.cpp";
   {
@@ -575,7 +608,7 @@ TEST_CASE("Parity: --ino routes to the C template and produces .h/.cpp", "[parit
   fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_ino";
   fs::create_directories(out_dir);
   fs::path out_base = out_dir / "inofsm";
-  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string gv2fsm = GV2FSM_BIN.string();
 
   std::string cmd = gv2fsm + " -p ino -o " + out_base.string() + " --ino -f " +
                     DOT_FILE.string();
@@ -598,11 +631,16 @@ TEST_CASE("Parity: C++ header has no ODR violation across two translation units"
   fs::path out_dir = fs::temp_directory_path() / "gv2fsm_parity_odr";
   fs::create_directories(out_dir);
   fs::path out_base = out_dir / "odrfsm";
-  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string gv2fsm = GV2FSM_BIN.string();
 
   std::string cmd = gv2fsm + " -p odrns -k stop -o " + out_base.string() +
                     " --cpp -f " + DOT_FILE.string();
   REQUIRE(run_cmd(cmd) == 0);
+
+  if (!can_run_compile_tests()) {
+    fs::remove_all(out_dir);
+    SKIP("clang++ not available for the compile check");
+  }
 
   fs::path tu1 = out_dir / "tu1.cpp";
   fs::path tu2 = out_dir / "tu2.cpp";
@@ -805,7 +843,7 @@ TEST_CASE("Smoke: gv2fsm generates C++ files", "[smoke]") {
   fs::create_directories(out_dir);
 
   fs::path out_base = out_dir / "sm";
-  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string gv2fsm = GV2FSM_BIN.string();
   std::string dot = DOT_FILE.string();
 
   // Remove any previous output
@@ -864,7 +902,7 @@ TEST_CASE("Smoke: library API generates files with custom main template",
 
 TEST_CASE("Smoke: generated C++ compiles and runs", "[smoke]") {
   // Step 1: generate into examples/ (force overwrite)
-  std::string gv2fsm = (BIN_DIR / "gv2fsm").string();
+  std::string gv2fsm = GV2FSM_BIN.string();
   std::string dot = DOT_FILE.string();
   fs::path examples = SRC_DIR / "examples";
   std::string out_base = (examples / "sm").string();
@@ -873,6 +911,9 @@ TEST_CASE("Smoke: generated C++ compiles and runs", "[smoke]") {
                         " --cpp -k stop -l -f " + dot;
   INFO("Generate: " << gen_cmd);
   REQUIRE(run_cmd(gen_cmd) == 0);
+
+  if (!can_run_compile_tests())
+    SKIP("clang++ not available for the compile check");
 
   // Step 2: compile examples/main.cpp
   fs::path main_src = examples / "main.cpp";
