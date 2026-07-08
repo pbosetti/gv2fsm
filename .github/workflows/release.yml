@@ -69,11 +69,23 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          # Create the release if it does not exist yet, generating notes.
+          # Extract this version's section of CHANGES.md (from its "## [X.Y.Z]"
+          # heading up to the next version heading) to use as release notes.
+          awk -v ver="${TAG#v}" '
+            /^## \[/ { insec = (index($0, "## [" ver "]") == 1) }
+            insec' CHANGES.md > release_notes.md
+          # Create the release if it does not exist yet.
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --generate-notes
+            if [ -s release_notes.md ]; then
+              gh release create "$TAG" \
+                --title "$TAG" \
+                --notes-file release_notes.md
+            else
+              # No matching section in CHANGES.md: fall back to generated notes.
+              gh release create "$TAG" \
+                --title "$TAG" \
+                --generate-notes
+            fi
           fi
           # Upload all packaged artifacts, clobbering any stale assets from a
           # previous run on this same tag so the release always carries the
