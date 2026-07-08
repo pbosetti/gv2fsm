@@ -25,6 +25,14 @@ is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `tree-sitter-cpp` grammars (fetched via CMake `FetchContent`, built from
   their committed, pre-generated parser sources — no external code-gen tool
   required at build time).
+- The tree-sitter recovery also engages per function on files that otherwise
+  have markers: a function whose marker pair was deleted or broken (one line
+  removed, or its id mistyped) is recovered structurally, any stray marker
+  line is scrubbed, and the body is re-wrapped in a fresh pair. Whenever
+  tree-sitter engages, `--update` prints a table of the recovered functions
+  with the reason each one needed recovery (legacy file / pair missing /
+  pair malformed); the same detail is available programmatically in
+  `MergeResult::recovered_functions`.
 - `LICENSE` — the project is now explicitly licensed under Apache License 2.0.
 - This changelog.
 - A real rendered example diagram, `examples/sm.png`, generated from

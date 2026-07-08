@@ -812,6 +812,10 @@ TEST_CASE("merge_generated recovers bodies via tree-sitter when markers are abse
 
   auto result = merge_generated(fresh, existing, SourceLang::Cpp);
   CHECK(result.legacy_import);
+  // Every function present in the file is reported as a legacy recovery.
+  CHECK(result.recovered_functions.size() == 10); // 5 states + 5 transitions
+  for (auto &rf : result.recovered_functions)
+    CHECK(rf.reason == RecoveryReason::LegacyImport);
   CHECK_THAT(result.text, ContainsSubstring("next_state = STATE_SETUP;"));
   CHECK_THAT(result.text, ContainsSubstring("counter++;"));
 
@@ -825,6 +829,76 @@ TEST_CASE("merge_generated recovers bodies via tree-sitter when markers are abse
     return n;
   };
   CHECK(count_occurrences("state_t next_state = sm::UNIMPLEMENTED;") == 5);
+}
+
+TEST_CASE("merge_generated recovers functions whose marker pair is missing or broken",
+          "[merge]") {
+  FSM fsm;
+  fsm.project_name = "sm";
+  REQUIRE(parse_sm(fsm));
+  std::string fresh = generate_source_cpp(fsm);
+
+  std::string existing = fresh;
+  auto replace_once = [&](const std::string &from, const std::string &to) {
+    auto pos = existing.find(from);
+    REQUIRE(pos != std::string::npos);
+    existing.replace(pos, from.size(), to);
+  };
+
+  // Control: a normal edit inside an intact marker pair.
+  replace_once(
+      "/* USER CODE BEGIN stay */\n  /* Your Code Here */\n  /* USER CODE END stay */",
+      "/* USER CODE BEGIN stay */\n  counter++;\n  /* USER CODE END stay */");
+  // do_setup: the user deleted the whole marker pair around their code.
+  replace_once("/* USER CODE BEGIN do_setup */\n  /* Your Code Here */\n\n  "
+               "/* USER CODE END do_setup */",
+               "setup_gadget(); // user-setup");
+  // do_running: the user deleted only the END line, leaving a stray BEGIN.
+  replace_once("/* USER CODE BEGIN do_running */\n  /* Your Code Here */\n\n  "
+               "/* USER CODE END do_running */",
+               "/* USER CODE BEGIN do_running */\n  running_gadget(); // user-running");
+
+  auto result = merge_generated(fresh, existing, SourceLang::Cpp);
+
+  // Marker mode (not the whole-file legacy import), with two functions
+  // recovered structurally — each tagged with why it needed recovery.
+  CHECK_FALSE(result.legacy_import);
+  REQUIRE(result.recovered_functions.size() == 2);
+  CHECK(result.recovered_functions[0].id == "do_setup");
+  CHECK(result.recovered_functions[0].reason == RecoveryReason::MissingMarkers);
+  CHECK(result.recovered_functions[1].id == "do_running");
+  CHECK(result.recovered_functions[1].reason == RecoveryReason::BrokenMarkers);
+  CHECK(result.kept == 12); // includes + globals + 5 states + 5 transitions
+  CHECK(result.added == 0);
+  CHECK(result.orphaned == 0);
+
+  CHECK_THAT(result.text, ContainsSubstring("counter++;"));
+  CHECK_THAT(result.text, ContainsSubstring("setup_gadget(); // user-setup"));
+  CHECK_THAT(result.text, ContainsSubstring("running_gadget(); // user-running"));
+
+  auto count_occurrences = [&](const std::string &needle) {
+    size_t n = 0, pos = 0;
+    while ((pos = result.text.find(needle, pos)) != std::string::npos) {
+      n++;
+      pos += needle.size();
+    }
+    return n;
+  };
+  // Each recovered function gets exactly one fresh pair back: the stray BEGIN
+  // from the broken pair must not be re-embedded inside the region.
+  CHECK(count_occurrences("USER CODE BEGIN do_running") == 1);
+  CHECK(count_occurrences("USER CODE END do_running") == 1);
+  CHECK(count_occurrences("USER CODE BEGIN do_setup") == 1);
+  CHECK(count_occurrences("USER CODE END do_setup") == 1);
+  // And the generated prologue is not duplicated into the recovered bodies.
+  CHECK(count_occurrences("state_t next_state = sm::UNIMPLEMENTED;") == 5);
+
+  // The merged output must be marker-clean: merging it again with the same
+  // fresh content is a no-op needing no recovery.
+  auto again = merge_generated(fresh, result.text, SourceLang::Cpp);
+  CHECK(again.recovered_functions.empty());
+  CHECK_FALSE(again.legacy_import);
+  CHECK_THAT(again.text, ContainsSubstring("running_gadget(); // user-running"));
 }
 
 // ── Version ──────────────────────────────────────────────────────────────────

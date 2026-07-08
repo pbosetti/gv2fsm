@@ -172,6 +172,16 @@ Without `-u` (or `-f`), `gv2fsm` still refuses to overwrite an existing output f
 
 **Files generated before this feature existed** have no markers yet. The first `-u` run on such a file falls back to a best-effort recovery: it parses the file with [tree-sitter](https://tree-sitter.github.io/tree-sitter/) and pulls each function's body out from around the generated boilerplate (the `switch` for C state functions, the final `return` for C++ state functions, or the whole body for transition functions). This is a one-time import — review the diff against the `.bak` copy afterwards; every following `-u` run then uses the markers it just wrote.
 
+The same recovery also engages **per function** on files that otherwise have markers: if you delete or break an individual function's marker pair (removing one of the two lines, or mistyping its id), `-u` recovers that function's body structurally, scrubs any stray marker line, and writes it back inside a fresh pair. Whenever tree-sitter engages, `gv2fsm` prints a table of the recovered functions with the reason each one needed recovery:
+
+```
+Updated source scheme_impl.hpp (kept 12, added 0, orphaned 0)
+  Some USER CODE markers were missing or broken: bodies recovered via tree-sitter (best effort, please review the diff against scheme_impl.hpp.bak):
+    do_setup      marker pair missing
+    do_running    marker pair malformed (stray line removed)
+Backup saved to scheme_impl.hpp.bak
+```
+
 ## Library usage
 
 `gv2fsm` also ships as a library, so you can drive the same workflow from your own code instead of shelling out:

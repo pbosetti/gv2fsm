@@ -107,6 +107,28 @@ std::string trim_blank_edges(const std::string &s) {
   return out;
 }
 
+// Drops any line carrying a USER CODE marker comment. When a marker pair is
+// malformed (one line deleted, or its id mistyped) the surviving stray line
+// sits inside the recovered slice; re-embedding it in the regenerated region
+// would corrupt the next merge's marker scan.
+std::string strip_marker_lines(const std::string &s) {
+  std::string out;
+  size_t pos = 0;
+  while (pos <= s.size()) {
+    size_t nl = s.find('\n', pos);
+    std::string line = (nl == std::string::npos)
+                           ? s.substr(pos)
+                           : s.substr(pos, nl - pos + 1);
+    if (line.find("USER CODE BEGIN") == std::string::npos &&
+        line.find("USER CODE END") == std::string::npos)
+      out += line;
+    if (nl == std::string::npos)
+      break;
+    pos = nl + 1;
+  }
+  return out;
+}
+
 std::string node_text(TSNode n, const std::string &src) {
   uint32_t s = ts_node_start_byte(n);
   uint32_t e = ts_node_end_byte(n);
@@ -210,6 +232,52 @@ struct TSFile {
   }
 };
 
+// Recover one function's user code from `existing` via tree-sitter: slice the
+// body up to its structural boundary, strip the generated prologue (identified
+// by cross-referencing the same function in `fresh`), and scrub any stray
+// marker line left behind by a malformed pair. Returns false when the function
+// does not exist in `existing` (e.g. a state newly added to the graph).
+bool recover_user_code(const TSFile &fresh_ts, const TSFile &existing_ts,
+                       const std::string &fresh, const std::string &existing,
+                       const MarkerRegion &r, std::string &out) {
+  TSNode existing_body = find_function_body(existing_ts.root, r.id, existing);
+  if (ts_node_is_null(existing_body))
+    return false;
+
+  uint32_t ex_start = ts_node_start_byte(existing_body) + 1;
+  uint32_t boundary = find_boundary(existing_body);
+  std::string raw = existing.substr(ex_start, boundary - ex_start);
+
+  // The generated prologue (e.g. the `next_state = ...UNIMPLEMENTED;`
+  // declaration, or a signal()/syslog() call) sits before the marker in
+  // `fresh` too; if `existing`'s body starts with that same text, it is
+  // boilerplate the user never touched, not part of their code.
+  TSNode fresh_body = find_function_body(fresh_ts.root, r.id, fresh);
+  if (!ts_node_is_null(fresh_body)) {
+    uint32_t fr_start = ts_node_start_byte(fresh_body) + 1;
+    if (r.region_start >= fr_start) {
+      std::string fresh_prologue =
+          fresh.substr(fr_start, r.region_start - fr_start);
+      if (raw.compare(0, fresh_prologue.size(), fresh_prologue) == 0)
+        raw = raw.substr(fresh_prologue.size());
+    }
+  }
+
+  out = trim_blank_edges(strip_marker_lines(raw));
+  return true;
+}
+
+// A function with no scanned region either lost its pair entirely, or a stray
+// line of it survives (pair broken by deleting one line or mistyping its id).
+// The " */" suffix keeps ids that prefix other ids from matching.
+RecoveryReason classify_missing(const std::string &existing,
+                                const std::string &id) {
+  if (existing.find("USER CODE BEGIN " + id + " */") != std::string::npos ||
+      existing.find("USER CODE END " + id + " */") != std::string::npos)
+    return RecoveryReason::BrokenMarkers;
+  return RecoveryReason::MissingMarkers;
+}
+
 } // namespace
 
 MergeResult merge_generated(const std::string &fresh, const std::string &existing,
@@ -223,6 +291,31 @@ MergeResult merge_generated(const std::string &fresh, const std::string &existin
   if (!existing_regions.empty()) {
     for (auto &r : existing_regions)
       preserved[r.id] = existing.substr(r.content_start, r.content_end - r.content_start);
+
+    // Hybrid fallback: a function present in the fresh output whose marker
+    // pair is missing or malformed on disk (the user deleted or broke its
+    // guards) can still be recovered structurally, one function at a time —
+    // the same mechanism as the whole-file legacy import below. Functions
+    // genuinely new to the graph are absent from `existing` and simply keep
+    // their fresh stub.
+    std::vector<const MarkerRegion *> missing;
+    for (auto &r : fresh_regions)
+      if (r.id != "includes" && r.id != "globals" && !preserved.count(r.id))
+        missing.push_back(&r);
+
+    if (!missing.empty()) {
+      TSFile fresh_ts(fresh, lang);
+      TSFile existing_ts(existing, lang);
+      for (auto *r : missing) {
+        std::string body;
+        if (recover_user_code(fresh_ts, existing_ts, fresh, existing, *r,
+                              body)) {
+          preserved[r->id] = body;
+          result.recovered_functions.push_back(
+              {r->id, classify_missing(existing, r->id)});
+        }
+      }
+    }
   } else if (!existing.empty()) {
     result.legacy_import = true;
 
@@ -233,30 +326,12 @@ MergeResult merge_generated(const std::string &fresh, const std::string &existin
       if (r.id == "includes" || r.id == "globals")
         continue;
 
-      TSNode existing_body = find_function_body(existing_ts.root, r.id, existing);
-      if (ts_node_is_null(existing_body))
-        continue;
-
-      uint32_t ex_start = ts_node_start_byte(existing_body) + 1;
-      uint32_t boundary = find_boundary(existing_body);
-      std::string raw = existing.substr(ex_start, boundary - ex_start);
-
-      // The generated prologue (e.g. the `next_state = ...UNIMPLEMENTED;`
-      // declaration, or a signal()/syslog() call) sits before the marker in
-      // `fresh` too; if `existing`'s body starts with that same text, it is
-      // boilerplate the user never touched, not part of their code.
-      TSNode fresh_body = find_function_body(fresh_ts.root, r.id, fresh);
-      if (!ts_node_is_null(fresh_body)) {
-        uint32_t fr_start = ts_node_start_byte(fresh_body) + 1;
-        if (r.region_start >= fr_start) {
-          std::string fresh_prologue =
-              fresh.substr(fr_start, r.region_start - fr_start);
-          if (raw.compare(0, fresh_prologue.size(), fresh_prologue) == 0)
-            raw = raw.substr(fresh_prologue.size());
-        }
+      std::string body;
+      if (recover_user_code(fresh_ts, existing_ts, fresh, existing, r, body)) {
+        preserved[r.id] = body;
+        result.recovered_functions.push_back(
+            {r.id, RecoveryReason::LegacyImport});
       }
-
-      preserved[r.id] = trim_blank_edges(raw);
     }
   }
 

@@ -15,6 +15,18 @@
 
 namespace gv2fsm {
 
+static const char *recovery_reason_text(RecoveryReason r) {
+  switch (r) {
+  case RecoveryReason::LegacyImport:
+    return "no markers in file (pre-marker generation)";
+  case RecoveryReason::MissingMarkers:
+    return "marker pair missing";
+  case RecoveryReason::BrokenMarkers:
+    return "marker pair malformed (stray line removed)";
+  }
+  return "unknown";
+}
+
 int run(int argc, char *argv[], std::ostream &out, std::ostream &err) {
   FSM sm;
   bool gen_header = true;
@@ -237,11 +249,26 @@ int run(int argc, char *argv[], std::ostream &out, std::ostream &err) {
       f << merged.text;
       out << "Updated source " << name << " (kept " << merged.kept << ", added "
           << merged.added << ", orphaned " << merged.orphaned << ")\n";
-      if (merged.legacy_import)
+      if (!merged.recovered_functions.empty()) {
+        out << "  "
+            << (merged.legacy_import
+                    ? "No USER CODE markers found: bodies recovered via "
+                      "tree-sitter"
+                    : "Some USER CODE markers were missing or broken: bodies "
+                      "recovered via tree-sitter")
+            << " (best effort, please review the diff against " << name
+            << ".bak):\n";
+        size_t width = 0;
+        for (auto &rf : merged.recovered_functions)
+          width = std::max(width, rf.id.size());
+        for (auto &rf : merged.recovered_functions)
+          out << "    " << rf.id << std::string(width - rf.id.size() + 2, ' ')
+              << recovery_reason_text(rf.reason) << "\n";
+      } else if (merged.legacy_import) {
         out << "  " << name
-            << " had no USER CODE markers: recovered bodies via tree-sitter "
-               "(best effort, please review the diff against " << name
-            << ".bak)\n";
+            << " had no USER CODE markers and no recoverable function bodies "
+               "were found (see " << name << ".bak)\n";
+      }
       out << "Backup saved to " << name << ".bak\n";
     } else {
       std::ofstream f(name);
